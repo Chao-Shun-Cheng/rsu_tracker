@@ -313,7 +313,10 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
         dd.acceleration.linear.y = tyaw_rate;
         dd.velocity_reliable = targets_[i].is_stable_;
         dd.pose_reliable = targets_[i].is_stable_;
-
+        for (int j = 0; j < 5; j++) {
+            for (int k = 0; k < 5; k++) 
+                dd.covariance[j * 5 + k] = targets_[i].p_merge_(j, k);
+        }
         // Aligh the longest side of dimentions with the estimated orientation
         if (targets_[i].object_.dimensions.x < targets_[i].object_.dimensions.y) {
             dd.dimensions.x = targets_[i].object_.dimensions.y;
@@ -436,6 +439,9 @@ void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, dou
     }
     timestamp_ = timestamp;
     init_ = true;
+    if (debug) {
+        std::cout << "Finish initTracker" << std::endl;
+    }
 }
 
 bool ImmUkfPda::updateNecessaryTransform()
