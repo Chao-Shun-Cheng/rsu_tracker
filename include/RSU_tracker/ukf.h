@@ -12,7 +12,7 @@
 #define ALPHA 0.0025
 #define BETA 2
 #define K 0
-
+#define DEBUG true
 #define STATE_VECTOR_NUM 5
 #define RSU_MEASUREMENT_NUM 2
 
@@ -39,6 +39,7 @@ class UKF
     rm: Random Motion
     */
 public:
+    bool debug;
     int ukf_id_;
     int num_state_;
     int RSU_state_;
@@ -70,7 +71,7 @@ public:
     Eigen::MatrixXd r_cv_;
     Eigen::MatrixXd r_ctrv_;
     Eigen::MatrixXd r_rm_;
-    
+
     //* time when the state is true, in us
     long long time_;
 
@@ -180,9 +181,11 @@ public:
                       const double gating_threshold,
                       const std::vector<autoware_msgs::DetectedObject> &object_vec);
 
-    void ctrv(const double p_x, const double p_y, const double v, const double yaw, const double yawd, const double delta_t, std::vector<double> &state);
+    void
+    ctrv(const double p_x, const double p_y, const double v, const double yaw, const double yawd, const double delta_t, std::vector<double> &state);
 
-    void cv(const double p_x, const double p_y, const double v, const double yaw, const double yawd, const double delta_t, std::vector<double> &state);
+    void
+    cv(const double p_x, const double p_y, const double v, const double yaw, const double yawd, const double delta_t, std::vector<double> &state);
 
     void randomMotion(const double p_x,
                       const double p_y,

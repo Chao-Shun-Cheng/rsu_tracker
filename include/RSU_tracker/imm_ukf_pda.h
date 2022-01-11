@@ -8,12 +8,14 @@
 #include "autoware_msgs/DetectedObjectArray.h"
 #include "ukf.h"
 
-#define CENTROID_DISTANCE 0.2 // distance to consider centroids the same
+#define DEBUG true
+#define CENTROID_DISTANCE 0.2  // distance to consider centroids the same
 #define DISTANCE(p1, p2) (pow(fabs(p1.x - p2.x), 2) + pow(fabs(p1.y - p2.y), 2))
 
 class ImmUkfPda
 {
 private:
+    bool debug;
     int target_id_;
     bool init_;
     double timestamp_;
@@ -38,6 +40,8 @@ private:
     double merge_distance_threshold_;
 
     std::string tracking_frame_;
+    std::string sub_topic_;
+    std::string pub_topic_;
 
     tf::TransformListener tf_listener_;
     tf::StampedTransform local2global_;

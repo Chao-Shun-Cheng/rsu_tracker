@@ -5,10 +5,13 @@
  */
 UKF::UKF()
 {
+    if (debug) {
+        std::cout << "state vector num : " << STATE_VECTOR_NUM << ", rsu measurement num : " << RSU_MEASUREMENT_NUM << std::endl;
+    }
     num_state_ = STATE_VECTOR_NUM;
     RSU_state_ = RSU_MEASUREMENT_NUM;
     num_motion_model_ = 3;
-
+    debug = DEBUG;
     // initial state vector
     x_merge_ = Eigen::MatrixXd(num_state_, 1);
     x_cv_ = Eigen::MatrixXd(num_state_, 1);
@@ -86,6 +89,14 @@ UKF::UKF()
     k_ctrv_ = Eigen::MatrixXd(num_state_, RSU_state_);
     k_rm_ = Eigen::MatrixXd(num_state_, RSU_state_);
 
+    // process noise Q and measurement noise R
+    r_cv_ = Eigen::MatrixXd(RSU_state_, RSU_state_);
+    r_ctrv_ = Eigen::MatrixXd(RSU_state_, RSU_state_);
+    r_rm_ = Eigen::MatrixXd(RSU_state_, RSU_state_);
+    q_cv_ = Eigen::MatrixXd(num_state_, num_state_);
+    q_ctrv_ = Eigen::MatrixXd(num_state_, num_state_);
+    q_rm_ = Eigen::MatrixXd(num_state_, num_state_);
+
     // tracking parameter
     lifetime_ = 0;
     is_static_ = false;
@@ -108,18 +119,34 @@ double UKF::normalizeAngle(const double angle)
 
 void UKF::initialize(const Eigen::VectorXd &z, const double timestamp, const int target_id)
 {  // first measurement, init covariance matrix by hardcoding since no clue about initial state covrariance
+    if (debug) {
+        std::cout << "Start initialize UKF" << std::endl;
+    }
     ukf_id_ = target_id;
     time_ = timestamp;  // init timestamp
-    x_merge_ << z(0), z(1), 0, 0, 0.1;
+    x_merge_ << 0, 0, 0, 0, 0.1;
+    x_merge_(0) = z(0);
+    x_merge_(1) = z(1);
     p_merge_ << 0.5, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 1;
     x_cv_ = x_ctrv_ = x_rm_ = x_merge_;
     p_cv_ = p_ctrv_ = p_rm_ = p_merge_;
+    if (debug) {
+        std::cout << "Finish state and covariance initialize" << std::endl;
+    }
 
+    z_pred_cv_(0) = z(0);
+    z_pred_cv_(1) = z(1);
+    z_pred_ctrv_ = z_pred_rm_ = z_pred_cv_;
     s_cv_ << 1, 0, 0, 1;
     s_ctrv_ = s_rm_ = s_cv_;
-
-    z_pred_cv_ << z(0), z(1);
-    z_pred_ctrv_ = z_pred_rm_ = z_pred_cv_;
+    // initialize R covariance
+    // TODO : measurement needs to change to latency + RSU error map by Kenny
+    r_cv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    r_ctrv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    r_rm_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    if (debug) {
+        std::cout << "Finish measurement and covariance initialize" << std::endl;
+    }
 
     // set weights
     // reference from "The Unscented Kalman Filter for Nonlinear Estimation, Eric A. Wan and Rudolph van der Merwe, 2000"
@@ -137,15 +164,15 @@ void UKF::initialize(const Eigen::VectorXd &z, const double timestamp, const int
         weights_s_(i) = weight;
         weights_c_(i) = weight;
     }
-
-    // initialize R covariance
-    // TODO : measurement needs to change to latency + RSU error map by Kenny
-    r_cv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
-    r_ctrv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
-    r_rm_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    if (debug) {
+        std::cout << "Finish weight initialize" << std::endl;
+    }
 
     // init tracking num
     tracking_num_ = 1;
+    if (debug) {
+        std::cout << "Finish initialize UKF" << std::endl;
+    }
 }
 
 void UKF::updateModeProb(const std::vector<double> &lambda_vec)
@@ -461,7 +488,7 @@ void UKF::updateIMMUKF(const double detection_probability,
 
     // update state varibale x and state covariance p
     std::vector<double> lambda_vec;
-    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec, lambda_vec); // TODO : understand this function
+    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec, lambda_vec);  // TODO : understand this function
     /*****************************************************************************
      *  IMM Merge Step
      ****************************************************************************/

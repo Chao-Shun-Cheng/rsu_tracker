@@ -4,8 +4,10 @@ ImmUkfPda::ImmUkfPda()
 {
     target_id_ = 0;
     init_ = false;
-
+    debug = DEBUG;
     private_nh_.param<std::string>("tracking_frame", tracking_frame_, "world");
+    private_nh_.param<std::string>("sub_topic", sub_topic_, "/simulator/ground_truth/objects");
+    private_nh_.param<std::string>("pub_topic", pub_topic_, "/tracker/RSU/objects");
     private_nh_.param<int>("life_time_threshold", life_time_threshold_, 8);
     private_nh_.param<double>("gating_threshold", gating_threshold_, 9.22);
     private_nh_.param<double>("gate_probability", gate_probability_, 0.99);
@@ -18,12 +20,17 @@ ImmUkfPda::ImmUkfPda()
 
 void ImmUkfPda::run()
 {
-    pub_object_array_ = node_handle_.advertise<autoware_msgs::DetectedObjectArray>("/detection/objects", 1);
-    sub_detected_array_ = node_handle_.subscribe("/detection/fusion_tools/objects", 1, &ImmUkfPda::callback, this);
+    pub_object_array_ = node_handle_.advertise<autoware_msgs::DetectedObjectArray>(pub_topic_, 1);
+    sub_detected_array_ = node_handle_.subscribe(sub_topic_, 1, &ImmUkfPda::callback, this);
 }
 
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
+    if (debug) {
+        std::cout << "=============================================" << std::endl;
+        std::cout << "Receive : " << sub_topic_ << std::endl;
+    }
+
     input_header_ = input.header;
     bool success = updateNecessaryTransform();
     if (!success) {
@@ -40,6 +47,9 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 
 void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
+    if (debug) {
+        std::cout << "Start tracker" << std::endl;
+    }
     double timestamp = input.header.stamp.toSec();
     std::vector<bool> matching_vec(input.objects.size(), false);
 
@@ -278,6 +288,9 @@ void ImmUkfPda::measurementValidation(const autoware_msgs::DetectedObjectArray &
 
 void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
+    if (debug) {
+        std::cout << "Start makeOutput" << std::endl;
+    }
     autoware_msgs::DetectedObjectArray tmp_objects;
     tmp_objects.header = input.header;
     std::vector<size_t> used_targets_indices;
@@ -406,6 +419,9 @@ void ImmUkfPda::updateBehaviorState(const UKF &target, autoware_msgs::DetectedOb
 
 void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, double timestamp)
 {
+    if (debug) {
+        std::cout << "Start initTracker : There are " << input.objects.size() << " objects" << std::endl;
+    }
     for (size_t i = 0; i < input.objects.size(); i++) {
         double px = input.objects[i].pose.position.x;
         double py = input.objects[i].pose.position.y;
