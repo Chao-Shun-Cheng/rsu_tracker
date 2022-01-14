@@ -6,6 +6,7 @@
 #include <vector>
 #include "autoware_msgs/DetectedObject.h"
 #include "autoware_msgs/DetectedObjectArray.h"
+#include "op_utility/DataRW.h"
 #include "ukf.h"
 
 #define DEBUG true
@@ -16,6 +17,8 @@ class ImmUkfPda
 {
 private:
     bool debug;
+    bool use_vector_map_;
+    UtilityHNS::MapRaw m_MapRaw;
     int target_id_;
     bool init_;
     double timestamp_;
@@ -38,6 +41,7 @@ private:
     double prevent_explosion_threshold_;
 
     double merge_distance_threshold_;
+    double lane_distance_threshold_;
 
     std::string tracking_frame_;
     std::string sub_topic_;
@@ -49,11 +53,20 @@ private:
     ros::NodeHandle node_handle_;
     ros::NodeHandle private_nh_;
     ros::Subscriber sub_detected_array_;
+    ros::Subscriber sub_lanes;
+    ros::Subscriber sub_points;
+    ros::Subscriber sub_nodes;
     ros::Publisher pub_object_array_;
 
     std_msgs::Header input_header_;
 
     void callback(const autoware_msgs::DetectedObjectArray &input);
+
+    void callbackGetVMLanes(const vector_map_msgs::LaneArray& msg);
+
+    void callbackGetVMPoints(const vector_map_msgs::PointArray& msg);
+
+    void callbackGetVMNodes(const vector_map_msgs::NodeArray& msg);
 
     void transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
 
@@ -98,6 +111,8 @@ private:
     bool isPointInPool(const std::vector<geometry_msgs::Point> &in_pool, const geometry_msgs::Point &in_point);
 
     void updateTargetWithAssociatedObject(const std::vector<autoware_msgs::DetectedObject> &object_vec, UKF &target);
+
+    void findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw);
 
 public:
     ImmUkfPda();

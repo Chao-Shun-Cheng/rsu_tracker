@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   lanelet2_extension
   autoware_msgs
   amathutils_lib
+  op_utility
   )
 
 
@@ -26,6 +27,7 @@ catkin_package(
   tf
   vector_map
   amathutils_lib
+  op_utility
   )
 
 set(ROSLINT_CPP_OPTS "--filter=-build/c++14")

@@ -16,16 +16,52 @@ ImmUkfPda::ImmUkfPda()
     private_nh_.param<int>("static_num_history_threshold", static_num_history_threshold_, 3);
     private_nh_.param<double>("prevent_explosion_threshold", prevent_explosion_threshold_, 1000);
     private_nh_.param<double>("merge_distance_threshold", merge_distance_threshold_, 0.5);
+    private_nh_.param<double>("lane_distance_threshold", lane_distance_threshold_, 0.5);
+    private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
 }
 
 void ImmUkfPda::run()
 {
     pub_object_array_ = node_handle_.advertise<autoware_msgs::DetectedObjectArray>(pub_topic_, 1);
     sub_detected_array_ = node_handle_.subscribe(sub_topic_, 1, &ImmUkfPda::callback, this);
+    if(use_vector_map_) {
+        sub_lanes = node_handle_.subscribe("/vector_map_info/lane", 1, &ImmUkfPda::callbackGetVMLanes,  this);
+        sub_points = node_handle_.subscribe("/vector_map_info/point", 1, &ImmUkfPda::callbackGetVMPoints,  this);
+        sub_nodes = node_handle_.subscribe("/vector_map_info/node", 1, &ImmUkfPda::callbackGetVMNodes,  this);
+    }
+}
+
+void ImmUkfPda::callbackGetVMLanes(const vector_map_msgs::LaneArray& msg)
+{
+	if(m_MapRaw.pLanes == nullptr) {
+        m_MapRaw.pLanes = new UtilityHNS::AisanLanesFileReader(msg);
+        std::cout << "Received Lanes : " << m_MapRaw.pLanes->m_data_list.size() << std::endl;
+    }
+}
+
+void ImmUkfPda::callbackGetVMPoints(const vector_map_msgs::PointArray& msg)
+{
+	if(m_MapRaw.pPoints  == nullptr) {
+        m_MapRaw.pPoints = new UtilityHNS::AisanPointsFileReader(msg); 
+        std::cout << "Received Points : " << m_MapRaw.pPoints->m_data_list.size() << std::endl;
+    }	
+}
+
+void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray& msg)
+{
+	if(m_MapRaw.pNodes == nullptr) {
+        m_MapRaw.pNodes = new UtilityHNS::AisanNodesFileReader(msg); 
+        std::cout << "Received Nodes : " << m_MapRaw.pNodes->m_data_list.size() << std::endl;
+    }
 }
 
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
+    if(use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints  == nullptr || m_MapRaw.pNodes == nullptr)) {
+        std::cout << "Wait for vector map" << std::endl;
+        return;
+    }
+
     if (debug) {
         std::cout << "=============================================" << std::endl;
         std::cout << "Receive : " << sub_topic_ << std::endl;
@@ -428,9 +464,15 @@ void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, dou
     for (size_t i = 0; i < input.objects.size(); i++) {
         double px = input.objects[i].pose.position.x;
         double py = input.objects[i].pose.position.y;
-        Eigen::VectorXd init_meas = Eigen::VectorXd(2);
-        init_meas << px, py;
-
+        Eigen::VectorXd init_meas = use_vector_map_ ? Eigen::VectorXd(3) : Eigen::VectorXd(2);
+        if(use_vector_map_) {
+            double yaw = 0;
+            findYawFromVectorMap(px, py, yaw)
+            init_meas << px, py, yaw;
+        } else {
+            init_meas << px, py;
+        }
+        
         UKF ukf;
         ukf.initialize(init_meas, timestamp, target_id_);
         ukf.object_ = input.objects[i];
@@ -442,6 +484,30 @@ void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, dou
     if (debug) {
         std::cout << "Finish initTracker" << std::endl;
     }
+}
+
+void ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw) 
+{
+    double min_distance = DBL_MAX;
+    int min_index = -1;
+    for(int i = 0; i < m_MapRaw.pLanes->m_data_list.size(); i++) {
+        UtilityHNS::AisanNodesFileReader::AisanNode *N = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[i].BNID);
+        UtilityHNS::AisanPointsFileReader::AisanPoints *P =  m_MapRaw.pPoints->GetDataRowById(N->PID);
+        double distance = pow(pow(abs(pos_x - P->Ly), 2) + pow(abs(pos_y - P->Bx), 2), 0.5);
+        if(distance < lane_distance_threshold_ && distance < min_distance) {
+            min_distance = distance; 
+            min_index = i;
+        }
+    }
+
+    if(min_index == -1) return false;
+    
+    UtilityHNS::AisanNodesFileReader::AisanNode *n_start = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[min_index].BNID);
+    UtilityHNS::AisanPointsFileReader::AisanPoints *p_start =  m_MapRaw.pPoints->GetDataRowById(n_start->PID);
+    UtilityHNS::AisanNodesFileReader::AisanNode *n_end = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[min_index].FNID);
+    UtilityHNS::AisanPointsFileReader::AisanPoints *p_end =  m_MapRaw.pPoints->GetDataRowById(n_end->PID);
+    yaw = atan2((p_end->Bx - p_start->Bx), (p_end->Ly - p_start->Ly));
+    return true;
 }
 
 bool ImmUkfPda::updateNecessaryTransform()

@@ -5,11 +5,11 @@
  */
 UKF::UKF()
 {
-    if (debug) {
-        std::cout << "state vector num : " << STATE_VECTOR_NUM << ", rsu measurement num : " << RSU_MEASUREMENT_NUM << std::endl;
-    }
     num_state_ = STATE_VECTOR_NUM;
-    RSU_state_ = RSU_MEASUREMENT_NUM;
+    RSU_state_ = VECTOR_MAP : 3 ? 2;
+    if (debug) {
+        std::cout << "state vector num : " << num_state_ << ", rsu measurement num : " << RSU_state_ << std::endl;
+    }
     num_motion_model_ = 3;
     debug = DEBUG;
     // initial state vector
@@ -35,6 +35,7 @@ UKF::UKF()
     // Laser measurement noise standard deviation position1 in m
     std_laspx_ = 0.15;  // TODO : measurement needs to change to latency + RSU error map by Kenny
     std_laspy_ = 0.15;  // TODO : measurement needs to change to latency + RSU error map by Kenny
+    std_lane_direction_ = 0.15;
 
     // time when the state is true, in us
     time_ = 0.0;
@@ -134,16 +135,30 @@ void UKF::initialize(const Eigen::VectorXd &z, const double timestamp, const int
         std::cout << "Finish state and covariance initialize" << std::endl;
     }
 
-    z_pred_cv_(0) = z(0);
-    z_pred_cv_(1) = z(1);
-    z_pred_ctrv_ = z_pred_rm_ = z_pred_cv_;
-    s_cv_ << 1, 0, 0, 1;
-    s_ctrv_ = s_rm_ = s_cv_;
+    
     // initialize R covariance
     // TODO : measurement needs to change to latency + RSU error map by Kenny
-    r_cv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
-    r_ctrv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
-    r_rm_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    if(VECTOR_MAP) {
+        z_pred_cv_(0) = z(0);
+        z_pred_cv_(1) = z(1);
+        z_pred_cv_(2) = z(2);
+        z_pred_ctrv_ = z_pred_rm_ = z_pred_cv_;
+        s_cv_ << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+        s_ctrv_ = s_rm_ = s_cv_;
+        r_cv_ << std_laspx_ * std_laspx_, 0, 0, 0, std_laspy_ * std_laspy_, 0, 0, 0, std_lane_direction_*std_lane_direction_;
+        r_ctrv_ << std_laspx_ * std_laspx_, 0, 0, 0, std_laspy_ * std_laspy_, 0, 0, 0, std_lane_direction_*std_lane_direction_;
+        r_rm_ << std_laspx_ * std_laspx_, 0, 0, 0, std_laspy_ * std_laspy_, 0, 0, 0, std_lane_direction_*std_lane_direction_;
+    } else {
+        z_pred_cv_(0) = z(0);
+        z_pred_cv_(1) = z(1);
+        z_pred_ctrv_ = z_pred_rm_ = z_pred_cv_;
+        s_cv_ << 1, 0, 0, 1;
+        s_ctrv_ = s_rm_ = s_cv_;
+        r_cv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+        r_ctrv_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+        r_rm_ << std_laspx_ * std_laspx_, 0, 0, std_laspy_ * std_laspy_;
+    }
+    
     if (debug) {
         std::cout << "Finish measurement and covariance initialize" << std::endl;
     }

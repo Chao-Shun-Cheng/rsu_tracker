@@ -14,7 +14,7 @@
 #define K 0
 #define DEBUG true
 #define STATE_VECTOR_NUM 5
-#define RSU_MEASUREMENT_NUM 2
+#define VECTOR_MAP true 
 
 
 enum TrackingState : int {
@@ -90,6 +90,7 @@ public:
     //* measurement noise standard deviation position1 in m
     double std_laspx_;
     double std_laspy_;
+    double std_lane_direction_;
 
     //* Weights of sigma points
     Eigen::VectorXd weights_c_;
