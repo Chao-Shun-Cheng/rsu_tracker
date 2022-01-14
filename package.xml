@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>RSU_tracker</name>
+  <name>rsu_tracker</name>
   <version>0.0.0</version>
-  <description>The RSU_tracker package</description>
+  <description>The rsu_tracker package</description>
   <maintainer email="chao.shun.cheng.tw@gmail.com">Chao Shun Cheng</maintainer>
   <author email="chao.shun.cheng.tw@gmail.com">Chao Shun Cheng</author>
   <license>Apache-2.0</license>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(RSU_tracker)
+project(rsu_tracker)
 
 find_package(autoware_build_flags REQUIRED)
 find_package(autoware_msgs REQUIRED)
@@ -34,23 +34,23 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   include)
 
-# RSU_tracker
-add_executable(RSU_tracker
+# rsu_tracker
+add_executable(rsu_tracker
         src/main.cpp
         src/imm_ukf_pda.cpp
         src/ukf.cpp
         )
-target_link_libraries(RSU_tracker
+target_link_libraries(rsu_tracker
         ${catkin_LIBRARIES}
         )
-add_dependencies(RSU_tracker
+add_dependencies(rsu_tracker
         ${catkin_EXPORTED_TARGETS}
         )
 
 
 
 install(TARGETS
-        RSU_tracker
+        rsu_tracker
         ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
