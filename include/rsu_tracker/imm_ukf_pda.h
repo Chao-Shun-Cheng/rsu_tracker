@@ -9,7 +9,6 @@
 #include "op_utility/DataRW.h"
 #include "ukf.h"
 
-#define DEBUG true
 #define CENTROID_DISTANCE 0.2  // distance to consider centroids the same
 #define DISTANCE(p1, p2) (pow(fabs(p1.x - p2.x), 2) + pow(fabs(p1.y - p2.y), 2))
 
@@ -26,23 +25,23 @@ private:
     std::vector<UKF> targets_;
 
     // probabilistic data association params
-    double gating_threshold_;
-    double gate_probability_;
-    double detection_probability_;
+    float gating_threshold_;
+    float gate_probability_;
+    float detection_probability_;
 
     // object association param
     int life_time_threshold_;
 
     // static classification param
-    double static_velocity_threshold_;
+    float static_velocity_threshold_;
     int static_num_history_threshold_;
 
     // prevent explode param for ukf
-    double prevent_explosion_threshold_;
+    float prevent_explosion_threshold_;
 
-    double merge_distance_threshold_;
-    double lane_distance_threshold_;
-
+    float merge_distance_threshold_;
+    float lane_distance_threshold_;
+    float yaw_threshold_;
     std::string tracking_frame_;
     std::string sub_topic_;
     std::string pub_topic_;
@@ -62,11 +61,11 @@ private:
 
     void callback(const autoware_msgs::DetectedObjectArray &input);
 
-    void callbackGetVMLanes(const vector_map_msgs::LaneArray& msg);
+    void callbackGetVMLanes(const vector_map_msgs::LaneArray &msg);
 
-    void callbackGetVMPoints(const vector_map_msgs::PointArray& msg);
+    void callbackGetVMPoints(const vector_map_msgs::PointArray &msg);
 
-    void callbackGetVMNodes(const vector_map_msgs::NodeArray& msg);
+    void callbackGetVMNodes(const vector_map_msgs::NodeArray &msg);
 
     void transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
 
@@ -112,7 +111,7 @@ private:
 
     void updateTargetWithAssociatedObject(const std::vector<autoware_msgs::DetectedObject> &object_vec, UKF &target);
 
-    void findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw);
+    bool findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw);
 
 public:
     ImmUkfPda();

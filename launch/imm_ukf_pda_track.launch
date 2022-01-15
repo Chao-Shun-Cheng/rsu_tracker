@@ -15,6 +15,7 @@
   <arg name="merge_distance_threshold" default="0.5"/>
   <arg name="lane_distance_threshold" default="0.5"/>
   <arg name="use_vector_map" default="true"/>
+  <arg name="debug" default="true"/>
 
   <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">
     <param name="gating_threshold" value="$(arg gating_threshold)" />
@@ -28,6 +29,7 @@
     <param name="merge_distance_threshold" value="$(arg merge_distance_threshold)" />
     <param name="lane_distance_threshold" value="$(arg lane_distance_threshold)" />
     <param name="use_vector_map" value="$(arg use_vector_map)" />
+    <param name="debug" value="$(arg debug)" />
     <param name="sub_topic" value="$(arg sub_topic)" />
     <param name="pub_topic" value="$(arg pub_topic)" />
   </node>

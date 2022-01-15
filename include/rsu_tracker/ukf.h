@@ -12,10 +12,6 @@
 #define ALPHA 0.0025
 #define BETA 2
 #define K 0
-#define DEBUG true
-#define STATE_VECTOR_NUM 5
-#define VECTOR_MAP true 
-
 
 enum TrackingState : int {
     Die = 0,        // No longer tracking
@@ -39,10 +35,12 @@ class UKF
     rm: Random Motion
     */
 public:
-    bool debug;
+    bool use_vector_map_;
+    bool debug_;
     int ukf_id_;
     int num_state_;
     int RSU_state_;
+    int RSU_lane_state_;
     int num_motion_model_;
 
     //* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
@@ -133,6 +131,27 @@ public:
     Eigen::MatrixXd k_ctrv_;
     Eigen::MatrixXd k_rm_;
 
+    // ----- for using vector map ----- //
+    Eigen::MatrixXd z_pred_cv_lane;
+    Eigen::MatrixXd z_pred_ctrv_lane;
+    Eigen::MatrixXd z_pred_rm_lane;
+
+    Eigen::MatrixXd s_cv_lane;
+    Eigen::MatrixXd s_ctrv_lane;
+    Eigen::MatrixXd s_rm_lane;
+
+    Eigen::MatrixXd k_cv_lane;
+    Eigen::MatrixXd k_ctrv_lane;
+    Eigen::MatrixXd k_rm_lane;
+
+    Eigen::MatrixXd r_cv_lane;
+    Eigen::MatrixXd r_ctrv_lane;
+    Eigen::MatrixXd r_rm_lane;
+
+    bool is_direction_ctrv_available_;
+    bool is_direction_cv_available_
+    // ----- for using vector map ----- //
+
     double pd_;
     double pg_;
 
@@ -153,7 +172,7 @@ public:
     /**
      * Constructor
      */
-    UKF();
+    UKF(bool use_vector_map, bool debug);
 
     void updateYawWithHighProb();
 
@@ -171,15 +190,15 @@ public:
 
     void findMaxZandS(Eigen::VectorXd &max_det_z, Eigen::MatrixXd &max_det_s);
 
-    void updateEachMotion(const double detection_probability,
-                          const double gate_probability,
-                          const double gating_threshold,
+    void updateEachMotion(const float detection_probability,
+                          const float gate_probability,
+                          const float gating_threshold,
                           const std::vector<autoware_msgs::DetectedObject> &object_vec,
                           std::vector<double> &lambda_vec);
 
-    void updateIMMUKF(const double detection_probability,
-                      const double gate_probability,
-                      const double gating_threshold,
+    void updateIMMUKF(const float detection_probability,
+                      const float gate_probability,
+                      const float gating_threshold,
                       const std::vector<autoware_msgs::DetectedObject> &object_vec);
 
     void
@@ -206,4 +225,8 @@ public:
     void updateKalmanGain(const int motion_ind);
 
     double normalizeAngle(const double angle);
+
+    bool isLaneDirectionAvailable(const double &angle, const float yaw_threshold);
+
+    double calculateNIS(const double &angle, const int motion_ind);
 };

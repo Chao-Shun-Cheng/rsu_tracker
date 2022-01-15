@@ -4,67 +4,63 @@ ImmUkfPda::ImmUkfPda()
 {
     target_id_ = 0;
     init_ = false;
-    debug = DEBUG;
     private_nh_.param<std::string>("tracking_frame", tracking_frame_, "world");
     private_nh_.param<std::string>("sub_topic", sub_topic_, "/simulator/ground_truth/objects");
     private_nh_.param<std::string>("pub_topic", pub_topic_, "/simulator/tracker/objects");
     private_nh_.param<int>("life_time_threshold", life_time_threshold_, 8);
-    private_nh_.param<double>("gating_threshold", gating_threshold_, 9.22);
-    private_nh_.param<double>("gate_probability", gate_probability_, 0.99);
-    private_nh_.param<double>("detection_probability", detection_probability_, 0.9);
-    private_nh_.param<double>("static_velocity_threshold", static_velocity_threshold_, 0.5);
+    private_nh_.param<float>("gating_threshold", gating_threshold_, 9.22);
+    private_nh_.param<float>("gate_probability", gate_probability_, 0.99);
+    private_nh_.param<float>("detection_probability", detection_probability_, 0.9);
+    private_nh_.param<float>("static_velocity_threshold", static_velocity_threshold_, 0.5);
     private_nh_.param<int>("static_num_history_threshold", static_num_history_threshold_, 3);
-    private_nh_.param<double>("prevent_explosion_threshold", prevent_explosion_threshold_, 1000);
-    private_nh_.param<double>("merge_distance_threshold", merge_distance_threshold_, 0.5);
-    private_nh_.param<double>("lane_distance_threshold", lane_distance_threshold_, 0.5);
+    private_nh_.param<float>("prevent_explosion_threshold", prevent_explosion_threshold_, 1000);
+    private_nh_.param<float>("merge_distance_threshold", merge_distance_threshold_, 0.5);
+    private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 0.5);
+    private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
     private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
+    private_nh_.param<bool>("debug", debug_, true);
 }
 
 void ImmUkfPda::run()
 {
     pub_object_array_ = node_handle_.advertise<autoware_msgs::DetectedObjectArray>(pub_topic_, 1);
     sub_detected_array_ = node_handle_.subscribe(sub_topic_, 1, &ImmUkfPda::callback, this);
-    if(use_vector_map_) {
-        sub_lanes = node_handle_.subscribe("/vector_map_info/lane", 1, &ImmUkfPda::callbackGetVMLanes,  this);
-        sub_points = node_handle_.subscribe("/vector_map_info/point", 1, &ImmUkfPda::callbackGetVMPoints,  this);
-        sub_nodes = node_handle_.subscribe("/vector_map_info/node", 1, &ImmUkfPda::callbackGetVMNodes,  this);
+    if (use_vector_map_) {
+        sub_lanes = node_handle_.subscribe("/vector_map_info/lane", 1, &ImmUkfPda::callbackGetVMLanes, this);
+        sub_points = node_handle_.subscribe("/vector_map_info/point", 1, &ImmUkfPda::callbackGetVMPoints, this);
+        sub_nodes = node_handle_.subscribe("/vector_map_info/node", 1, &ImmUkfPda::callbackGetVMNodes, this);
     }
 }
 
-void ImmUkfPda::callbackGetVMLanes(const vector_map_msgs::LaneArray& msg)
+void ImmUkfPda::callbackGetVMLanes(const vector_map_msgs::LaneArray &msg)
 {
-	if(m_MapRaw.pLanes == nullptr) {
+    if (m_MapRaw.pLanes == nullptr) {
         m_MapRaw.pLanes = new UtilityHNS::AisanLanesFileReader(msg);
         std::cout << "Received Lanes : " << m_MapRaw.pLanes->m_data_list.size() << std::endl;
     }
 }
 
-void ImmUkfPda::callbackGetVMPoints(const vector_map_msgs::PointArray& msg)
+void ImmUkfPda::callbackGetVMPoints(const vector_map_msgs::PointArray &msg)
 {
-	if(m_MapRaw.pPoints  == nullptr) {
-        m_MapRaw.pPoints = new UtilityHNS::AisanPointsFileReader(msg); 
+    if (m_MapRaw.pPoints == nullptr) {
+        m_MapRaw.pPoints = new UtilityHNS::AisanPointsFileReader(msg);
         std::cout << "Received Points : " << m_MapRaw.pPoints->m_data_list.size() << std::endl;
-    }	
+    }
 }
 
-void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray& msg)
+void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray &msg)
 {
-	if(m_MapRaw.pNodes == nullptr) {
-        m_MapRaw.pNodes = new UtilityHNS::AisanNodesFileReader(msg); 
+    if (m_MapRaw.pNodes == nullptr) {
+        m_MapRaw.pNodes = new UtilityHNS::AisanNodesFileReader(msg);
         std::cout << "Received Nodes : " << m_MapRaw.pNodes->m_data_list.size() << std::endl;
     }
 }
 
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
-    if(use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints  == nullptr || m_MapRaw.pNodes == nullptr)) {
+    if (use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints == nullptr || m_MapRaw.pNodes == nullptr)) {
         std::cout << "Wait for vector map" << std::endl;
         return;
-    }
-
-    if (debug) {
-        std::cout << "=============================================" << std::endl;
-        std::cout << "Receive : " << sub_topic_ << std::endl;
     }
 
     input_header_ = input.header;
@@ -83,9 +79,6 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 
 void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
-    if (debug) {
-        std::cout << "Start tracker" << std::endl;
-    }
     double timestamp = input.header.stamp.toSec();
     std::vector<bool> matching_vec(input.objects.size(), false);
 
@@ -171,7 +164,7 @@ void ImmUkfPda::makeNewTargets(const double timestamp, const autoware_msgs::Dete
             Eigen::VectorXd init_meas = Eigen::VectorXd(2);
             init_meas << px, py;
 
-            UKF ukf;
+            UKF ukf(use_vector_map_, debug_);
             ukf.initialize(init_meas, timestamp, target_id_);
             ukf.object_ = input.objects[i];
             targets_.push_back(ukf);
@@ -318,15 +311,21 @@ void ImmUkfPda::measurementValidation(const autoware_msgs::DetectedObjectArray &
     }
     if (exists_smallest_nis_object) {
         matching_vec[smallest_nis_ind] = true;
+        if (use_vector_map_) {
+            double yaw = 0;
+            bool nearbylane = findYawFromVectorMap(target.object_.pose.position.x, target.object_.pose.position.y, yaw);
+            if(nearbylane) {
+                if(isLaneDirectionAvailable(yaw, yaw_threshold_) {
+                    target.object_.angle = yaw;
+                }
+            }
+        }
         object_vec.push_back(target.object_);
     }
 }
 
 void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
-    if (debug) {
-        std::cout << "Start makeOutput" << std::endl;
-    }
     autoware_msgs::DetectedObjectArray tmp_objects;
     tmp_objects.header = input.header;
     std::vector<size_t> used_targets_indices;
@@ -350,7 +349,7 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
         dd.velocity_reliable = targets_[i].is_stable_;
         dd.pose_reliable = targets_[i].is_stable_;
         for (int j = 0; j < 5; j++) {
-            for (int k = 0; k < 5; k++) 
+            for (int k = 0; k < 5; k++)
                 dd.covariance[j * 5 + k] = targets_[i].p_merge_(j, k);
         }
         // Aligh the longest side of dimentions with the estimated orientation
@@ -458,54 +457,41 @@ void ImmUkfPda::updateBehaviorState(const UKF &target, autoware_msgs::DetectedOb
 
 void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, double timestamp)
 {
-    if (debug) {
-        std::cout << "Start initTracker : There are " << input.objects.size() << " objects" << std::endl;
-    }
     for (size_t i = 0; i < input.objects.size(); i++) {
         double px = input.objects[i].pose.position.x;
         double py = input.objects[i].pose.position.y;
-        Eigen::VectorXd init_meas = use_vector_map_ ? Eigen::VectorXd(3) : Eigen::VectorXd(2);
-        if(use_vector_map_) {
-            double yaw = 0;
-            findYawFromVectorMap(px, py, yaw)
-            init_meas << px, py, yaw;
-        } else {
-            init_meas << px, py;
-        }
-        
-        UKF ukf;
+        Eigen::VectorXd init_meas = Eigen::VectorXd(2);
+        init_meas << px, py;
+        UKF ukf(use_vector_map_, debug_);
         ukf.initialize(init_meas, timestamp, target_id_);
-        ukf.object_ = input.objects[i];
         targets_.push_back(ukf);
         target_id_++;
     }
     timestamp_ = timestamp;
     init_ = true;
-    if (debug) {
-        std::cout << "Finish initTracker" << std::endl;
-    }
 }
 
-void ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw) 
+bool ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw)
 {
     double min_distance = DBL_MAX;
     int min_index = -1;
-    for(int i = 0; i < m_MapRaw.pLanes->m_data_list.size(); i++) {
+    for (int i = 0; i < m_MapRaw.pLanes->m_data_list.size(); i++) {
         UtilityHNS::AisanNodesFileReader::AisanNode *N = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[i].BNID);
-        UtilityHNS::AisanPointsFileReader::AisanPoints *P =  m_MapRaw.pPoints->GetDataRowById(N->PID);
+        UtilityHNS::AisanPointsFileReader::AisanPoints *P = m_MapRaw.pPoints->GetDataRowById(N->PID);
         double distance = pow(pow(abs(pos_x - P->Ly), 2) + pow(abs(pos_y - P->Bx), 2), 0.5);
-        if(distance < lane_distance_threshold_ && distance < min_distance) {
-            min_distance = distance; 
+        if (distance < lane_distance_threshold_ && distance < min_distance) {
+            min_distance = distance;
             min_index = i;
         }
     }
 
-    if(min_index == -1) return false;
-    
+    if (min_index == -1)
+        return false;
+
     UtilityHNS::AisanNodesFileReader::AisanNode *n_start = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[min_index].BNID);
-    UtilityHNS::AisanPointsFileReader::AisanPoints *p_start =  m_MapRaw.pPoints->GetDataRowById(n_start->PID);
+    UtilityHNS::AisanPointsFileReader::AisanPoints *p_start = m_MapRaw.pPoints->GetDataRowById(n_start->PID);
     UtilityHNS::AisanNodesFileReader::AisanNode *n_end = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[min_index].FNID);
-    UtilityHNS::AisanPointsFileReader::AisanPoints *p_end =  m_MapRaw.pPoints->GetDataRowById(n_end->PID);
+    UtilityHNS::AisanPointsFileReader::AisanPoints *p_end = m_MapRaw.pPoints->GetDataRowById(n_end->PID);
     yaw = atan2((p_end->Bx - p_start->Bx), (p_end->Ly - p_start->Ly));
     return true;
 }
