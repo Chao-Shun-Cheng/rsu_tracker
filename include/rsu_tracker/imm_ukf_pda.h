@@ -15,7 +15,7 @@
 class ImmUkfPda
 {
 private:
-    bool debug;
+    bool debug_;
     bool use_vector_map_;
     UtilityHNS::MapRaw m_MapRaw;
     int target_id_;

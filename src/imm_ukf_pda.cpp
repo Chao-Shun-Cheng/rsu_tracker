@@ -91,6 +91,8 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
     double dt = (timestamp - timestamp_);
     timestamp_ = timestamp;
 
+    if(debug_)
+            std::cout << "Start UKF process, size : " << targets_.size() << std::endl;
     // start UKF process
     for (size_t i = 0; i < targets_.size(); i++) {
         targets_[i].is_stable_ = false;
@@ -103,15 +105,25 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
             targets_[i].tracking_num_ = TrackingState::Die;
             continue;
         }
-
+        if(debug_)
+            std::cout << "Start predictionIMMUKF\n";
         targets_[i].predictionIMMUKF(dt);
-
+        if(debug_)
+            std::cout << "Finish predictionIMMUKF\n";
+        
+        if(debug_)
+            std::cout << "Start probabilisticDataAssociation\n";
         std::vector<autoware_msgs::DetectedObject> object_vec;
         bool success = probabilisticDataAssociation(input, dt, matching_vec, object_vec, targets_[i]);
+        if(debug_)
+            std::cout << "Finish probabilisticDataAssociation\n";
         if (!success)
             continue;
-
+        if(debug_)
+            std::cout << "Start updateIMMUKF\n";
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
+        if(debug_)
+            std::cout << "Finish updateIMMUKF\n";
     }
     // end UKF process
 
@@ -314,10 +326,13 @@ void ImmUkfPda::measurementValidation(const autoware_msgs::DetectedObjectArray &
         if (use_vector_map_) {
             double yaw = 0;
             bool nearbylane = findYawFromVectorMap(target.object_.pose.position.x, target.object_.pose.position.y, yaw);
-            if(nearbylane) {
-                if(isLaneDirectionAvailable(yaw, yaw_threshold_) {
+            if (nearbylane) {
+                if (target.isLaneDirectionAvailable(yaw, yaw_threshold_)) {
                     target.object_.angle = yaw;
+                    if(debug_)
+                        std::cout << "use lane information" << std::endl;
                 }
+                    
             }
         }
         object_vec.push_back(target.object_);
