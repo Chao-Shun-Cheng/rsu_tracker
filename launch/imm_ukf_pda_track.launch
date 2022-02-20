@@ -1,7 +1,7 @@
 <!-- -->
 <launch>
-  <arg name="namespace" default="/simulator/tracker/"/>
-  <arg name="pub_topic" default="/simulator/tracker/objects" />
+  <arg name="namespace" default="/rsu/tracker/"/>
+  <arg name="pub_topic" default="/rsu/tracker/objects" />
   <arg name="sub_topic" default="/simulator/ground_truth/objects" />
 
   <arg name="tracking_frame" default="/world" />
