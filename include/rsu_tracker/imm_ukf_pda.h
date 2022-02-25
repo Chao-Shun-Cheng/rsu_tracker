@@ -4,6 +4,7 @@
 #include <vector_map/vector_map.h>
 #include <iostream>
 #include <vector>
+#include <fstream>
 #include "autoware_msgs/DetectedObject.h"
 #include "autoware_msgs/DetectedObjectArray.h"
 #include "op_utility/DataRW.h"
@@ -17,6 +18,7 @@ class ImmUkfPda
 private:
     bool debug_;
     bool use_vector_map_;
+    bool output_result_;
     UtilityHNS::MapRaw m_MapRaw;
     int target_id_;
     bool init_;
@@ -43,9 +45,12 @@ private:
     float lane_distance_threshold_;
     float yaw_threshold_;
     std::string tracking_frame_;
+    std::string logfile_name_;
+    std::string save_path_;
     std::string sub_topic_;
     std::string pub_topic_;
-
+    std::ofstream logfile;
+    
     tf::TransformListener tf_listener_;
     tf::StampedTransform local2global_;
 
@@ -112,6 +117,10 @@ private:
     void updateTargetWithAssociatedObject(const std::vector<autoware_msgs::DetectedObject> &object_vec, UKF &target);
 
     bool findYawFromVectorMap(const double &pos_x, const double &pos_y, double &yaw);
+
+    void get_logfilename();
+
+    void saveResult(const autoware_msgs::DetectedObjectArray& input, const autoware_msgs::DetectedObjectArray& output);
 
 public:
     ImmUkfPda();

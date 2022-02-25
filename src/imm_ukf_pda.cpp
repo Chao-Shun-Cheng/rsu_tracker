@@ -15,10 +15,39 @@ ImmUkfPda::ImmUkfPda()
     private_nh_.param<int>("static_num_history_threshold", static_num_history_threshold_, 3);
     private_nh_.param<float>("prevent_explosion_threshold", prevent_explosion_threshold_, 1000);
     private_nh_.param<float>("merge_distance_threshold", merge_distance_threshold_, 0.5);
-    private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 0.5);
+    private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 1);
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
     private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
     private_nh_.param<bool>("debug", debug_, true);
+    private_nh_.param<bool>("output_result", output_result_, true);
+    if (output_result_) {
+        private_nh_.param<std::string>("logfile_name", logfile_name_, "shalun_2_");
+        private_nh_.param<std::string>("save_path", save_path_, "/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/");
+        get_logfilename();
+    }
+}
+
+void ImmUkfPda::get_logfilename()
+{
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    logfile_name_ += (1 + ltm->tm_mon) / 10 ? std::to_string(1 + ltm->tm_mon) : ("0" + std::to_string(1 + ltm->tm_mon));      // month
+    logfile_name_ += (1 + ltm->tm_mday) / 10 ? std::to_string(1 + ltm->tm_mday) : ("0" + std::to_string(1 + ltm->tm_mday));  // day
+    logfile_name_ += (1 + ltm->tm_hour) / 10 ? std::to_string(1 + ltm->tm_hour) : ("0" + std::to_string(1 + ltm->tm_hour));  // hour
+    logfile_name_ += (1 + ltm->tm_min) / 10 ? std::to_string(1 + ltm->tm_min) : ("0" + std::to_string(1 + ltm->tm_min));     // minute
+    logfile_name_ += ".csv";
+    logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
+    if (!logfile.is_open()) {
+        std::cerr << RED << "failed to open " << save_path_ + logfile_name_ << RESET << '\n';
+    } else { 
+        logfile << "Time,Ground_x,Ground_y,Ground_velocity,Ground_yaw,Ground_yaw_rate,"  
+                << "TrackingState,Tracking_x,Tracking_y,Tracking_velocity,Tracking_yaw,Tracking_yaw_rate,"
+                << "covariance_x,covariance_y,covariance_velocity,covariance_yaw,covariance_yaw_rate,"
+                << "prob_CV,prob_CTRV,prob_RM\n";
+        logfile.close();
+        std::cout << "save path : " << save_path_ + logfile_name_ << std::endl;
+    }
+    return;
 }
 
 void ImmUkfPda::run()
@@ -59,7 +88,7 @@ void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray &msg)
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
     if (use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints == nullptr || m_MapRaw.pNodes == nullptr)) {
-        std::cout << "Wait for vector map" << std::endl;
+        std::cout << "Loading for vector map ...." << std::endl;
         return;
     }
 
@@ -91,8 +120,6 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
     double dt = (timestamp - timestamp_);
     timestamp_ = timestamp;
 
-    if(debug_)
-            std::cout << "Start UKF process, size : " << targets_.size() << std::endl;
     // start UKF process
     for (size_t i = 0; i < targets_.size(); i++) {
         targets_[i].is_stable_ = false;
@@ -105,25 +132,16 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
             targets_[i].tracking_num_ = TrackingState::Die;
             continue;
         }
-        if(debug_)
-            std::cout << "Start predictionIMMUKF\n";
-        targets_[i].predictionIMMUKF(dt);
-        if(debug_)
-            std::cout << "Finish predictionIMMUKF\n";
         
-        if(debug_)
-            std::cout << "Start probabilisticDataAssociation\n";
+        targets_[i].predictionIMMUKF(dt);
+        
         std::vector<autoware_msgs::DetectedObject> object_vec;
         bool success = probabilisticDataAssociation(input, dt, matching_vec, object_vec, targets_[i]);
-        if(debug_)
-            std::cout << "Finish probabilisticDataAssociation\n";
         if (!success)
             continue;
-        if(debug_)
-            std::cout << "Start updateIMMUKF\n";
+        
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
-        if(debug_)
-            std::cout << "Finish updateIMMUKF\n";
+        
     }
     // end UKF process
 
@@ -329,10 +347,7 @@ void ImmUkfPda::measurementValidation(const autoware_msgs::DetectedObjectArray &
             if (nearbylane) {
                 if (target.isLaneDirectionAvailable(yaw, yaw_threshold_)) {
                     target.object_.angle = yaw;
-                    if(debug_)
-                        std::cout << "use lane information" << std::endl;
                 }
-                    
             }
         }
         object_vec.push_back(target.object_);
@@ -393,13 +408,40 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
         }
     }
     detected_objects_output = removeRedundantObjects(tmp_objects, used_targets_indices);
+    saveResult(input, detected_objects_output);
+}
+
+void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray& input, const autoware_msgs::DetectedObjectArray& output)
+{
+    logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
+    if (!logfile.is_open()) {
+        std::cerr << RED << "failed to open " << save_path_ + logfile_name_ << RESET << '\n';
+    } else {
+        logfile << std::to_string(input.header.stamp.toSec()) << ",";
+        logfile << std::to_string(input.objects[0].pose.position.x) << "," << std::to_string(input.objects[0].pose.position.y) << ","  
+                << std::to_string(input.objects[0].velocity.linear.x) << "," 
+                << std::to_string(tf::getYaw(input.objects[0].pose.orientation)) << "," 
+                << std::to_string(input.objects[0].acceleration.linear.y) << ",";
+        logfile << output.objects[0].user_defined_info[3] << ","
+                << std::to_string(output.objects[0].pose.position.x) << "," << std::to_string(output.objects[0].pose.position.y) << ","  
+                << std::to_string(output.objects[0].velocity.linear.x) << "," 
+                << std::to_string(tf::getYaw(output.objects[0].pose.orientation)) << "," 
+                << std::to_string(output.objects[0].acceleration.linear.y) << ",";
+        logfile << std::to_string(output.objects[0].covariance[0]) << "," << std::to_string(output.objects[0].covariance[6]) << "," 
+                << std::to_string(output.objects[0].covariance[12]) << "," << std::to_string(output.objects[0].covariance[18]) << "," 
+                << std::to_string(output.objects[0].covariance[24]) << ",";
+        logfile << output.objects[0].user_defined_info[0] << ","
+                << output.objects[0].user_defined_info[1] << ","
+                << output.objects[0].user_defined_info[2] << std::endl;
+        logfile.close();
+    }
 }
 
 autoware_msgs::DetectedObjectArray ImmUkfPda::removeRedundantObjects(const autoware_msgs::DetectedObjectArray &in_detected_objects,
                                                                      const std::vector<size_t> in_tracker_indices)
 {
-    if (in_detected_objects.objects.size() != in_tracker_indices.size())
-        return in_detected_objects;
+    // if (in_detected_objects.objects.size() != in_tracker_indices.size())
+    //     return in_detected_objects;
 
     autoware_msgs::DetectedObjectArray resulting_objects;
     resulting_objects.header = in_detected_objects.header;
@@ -454,7 +496,7 @@ autoware_msgs::DetectedObjectArray ImmUkfPda::removeRedundantObjects(const autow
 bool ImmUkfPda::isPointInPool(const std::vector<geometry_msgs::Point> &in_pool, const geometry_msgs::Point &in_point)
 {
     for (size_t i = 0; i < in_pool.size(); i++) {
-        if (DISTANCE(in_pool[i], in_point) < pow(CENTROID_DISTANCE, 2))
+        if (DISTANCE(in_pool[i], in_point) < CENTROID_DISTANCE * CENTROID_DISTANCE)
             return true;
     }
     return false;
@@ -468,6 +510,11 @@ void ImmUkfPda::updateBehaviorState(const UKF &target, autoware_msgs::DetectedOb
         object.behavior_state = MotionModel::CTRV;
     else
         object.behavior_state = MotionModel::RM;
+
+    object.user_defined_info.push_back(std::to_string(target.mode_prob_cv_));
+    object.user_defined_info.push_back(std::to_string(target.mode_prob_ctrv_));
+    object.user_defined_info.push_back(std::to_string(target.mode_prob_rm_));
+    object.user_defined_info.push_back(std::to_string(target.tracking_num_));
 }
 
 void ImmUkfPda::initTracker(const autoware_msgs::DetectedObjectArray &input, double timestamp)
@@ -515,7 +562,7 @@ bool ImmUkfPda::updateNecessaryTransform()
 {
     bool success = true;
     try {
-        tf_listener_.waitForTransform(input_header_.frame_id, tracking_frame_, ros::Time(0), ros::Duration(1.0));
+        tf_listener_.waitForTransform(input_header_.frame_id, tracking_frame_, ros::Time(0), ros::Duration(2));
         tf_listener_.lookupTransform(tracking_frame_, input_header_.frame_id, ros::Time(0), local2global_);
     } catch (tf::TransformException ex) {
         ROS_ERROR("%s", ex.what());

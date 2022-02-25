@@ -1,6 +1,6 @@
 <!-- -->
 <launch>
-  <arg name="namespace" default="/rsu/tracker/"/>
+  <arg name="namespace" default="/simulator/tracker/"/>
   <arg name="pub_topic" default="/rsu/tracker/objects" />
   <arg name="sub_topic" default="/simulator/ground_truth/objects" />
 
@@ -13,10 +13,14 @@
   <arg name="static_num_history_threshold" default="3" />
   <arg name="prevent_explosion_threshold" default="1000" />
   <arg name="merge_distance_threshold" default="0.5"/>
-  <arg name="lane_distance_threshold" default="0.5"/>
+  <arg name="lane_distance_threshold" default="1"/>
+  <arg name="yaw_threshold" default="2.71"/>
   <arg name="use_vector_map" default="true"/>
   <arg name="debug" default="true"/>
-
+  <arg name="output_result" default="true"/>
+  <arg name="logfile_name" default="shalun_2" />
+  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/" />
+  
   <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">
     <param name="gating_threshold" value="$(arg gating_threshold)" />
     <param name="gate_probability" value="$(arg gate_probability)" />
@@ -26,10 +30,14 @@
     <param name="static_num_history_threshold" value="$(arg static_num_history_threshold)" />
     <param name="prevent_explosion_threshold" value="$(arg prevent_explosion_threshold)" />
     <param name="tracking_frame" value="$(arg tracking_frame)" />
+    <param name="logfile_name" value="$(arg logfile_name)" />
+    <param name="save_path" value="$(arg save_path)" />
     <param name="merge_distance_threshold" value="$(arg merge_distance_threshold)" />
     <param name="lane_distance_threshold" value="$(arg lane_distance_threshold)" />
+    <param name="yaw_threshold" value="$(arg yaw_threshold)" />
     <param name="use_vector_map" value="$(arg use_vector_map)" />
     <param name="debug" value="$(arg debug)" />
+    <param name="output_result" value="$(arg debug)" />
     <param name="sub_topic" value="$(arg sub_topic)" />
     <param name="pub_topic" value="$(arg pub_topic)" />
   </node>

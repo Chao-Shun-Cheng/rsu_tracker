@@ -33,9 +33,12 @@ UKF::UKF(bool use_vector_map, bool debug)
     std_rm_yawdd_ = 3;
 
     // Laser measurement noise standard deviation position1 in m
-    std_laspx_ = 0.15;           // TODO : measurement needs to change to latency + RSU error map by Kenny
-    std_laspy_ = 0.15;           // TODO : measurement needs to change to latency + RSU error map by Kenny
-    std_lane_direction_ = 0.15;  // TODO : measurement needs to change to latency + RSU error map by Kenny
+    std_laspx_ = 0.15;           // TODO : measurement needs to change to latency + RSU
+                                 // error map by Kenny
+    std_laspy_ = 0.15;           // TODO : measurement needs to change to latency + RSU
+                                 // error map by Kenny
+    std_lane_direction_ = 0.15;  // TODO : measurement needs to change to
+                                 // latency + RSU error map by Kenny
 
     // time when the state is true, in us
     time_ = 0.0;
@@ -137,7 +140,8 @@ double UKF::normalizeAngle(const double angle)
 }
 
 void UKF::initialize(const Eigen::VectorXd &z, const double timestamp, const int target_id)
-{  // first measurement, init covariance matrix by hardcoding since no clue about initial state covrariance
+{  // first measurement, init covariance matrix by hardcoding since no clue
+   // about initial state covrariance
 
     ukf_id_ = target_id;
     time_ = timestamp;  // init timestamp
@@ -171,8 +175,9 @@ void UKF::initialize(const Eigen::VectorXd &z, const double timestamp, const int
     }
 
     // set weights
-    // reference from "The Unscented Kalman Filter for Nonlinear Estimation, Eric A. Wan and Rudolph van der Merwe, 2000"
-    // alpha = 0.0025, beta = 2, k = 0
+    // reference from "The Unscented Kalman Filter for Nonlinear Estimation,
+    // Eric A. Wan and Rudolph van der Merwe, 2000" alpha = 0.0025, beta = 2, k
+    // = 0
     double alpha = ALPHA;
     double beta = BETA;
     double k = K;
@@ -523,21 +528,15 @@ void UKF::updateIMMUKF(const float detection_probability,
      *  IMM Update
      ****************************************************************************/
     // update kalman gain
-    if(debug_)
-        std::cout << "Start updateKalmanGain" << std::endl;
     updateKalmanGain(MotionModel::CV);
     updateKalmanGain(MotionModel::CTRV);
     updateKalmanGain(MotionModel::RM);
-    if(debug_)
-        std::cout << "Finish updateKalmanGain" << std::endl;
-    // update state varibale x and state covariance p
 
-    if(debug_)
-        std::cout << "Start updateEachMotion" << std::endl;
+    // update state varibale x and state covariance p
     std::vector<double> lambda_vec;
-    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec, lambda_vec);  // TODO : understand this function
-    if(debug_)
-        std::cout << "Finish updateEachMotion" << std::endl;
+    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec,
+                     lambda_vec);  // TODO : understand this function
+                     
     /*****************************************************************************
      *  IMM Merge Step
      ****************************************************************************/
@@ -588,8 +587,8 @@ void UKF::cv(const double p_x,
              const double delta_t,
              std::vector<double> &state)
 {
-    // Reference: Bayesian Environment Representation, Prediction, and Criticality Assessment for Driver Assistance
-    // Systems, 2016
+    // Reference: Bayesian Environment Representation, Prediction, and
+    // Criticality Assessment for Driver Assistance Systems, 2016
     double px_p = p_x + v * cos(yaw) * delta_t;
     double py_p = p_y + v * sin(yaw) * delta_t;
     double v_p = v;
@@ -611,8 +610,8 @@ void UKF::randomMotion(const double p_x,
                        const double delta_t,
                        std::vector<double> &state)
 {
-    // Reference: Bayesian Environment Representation, Prediction, and Criticality Assessment for Driver Assistance
-    // Systems, 2016
+    // Reference: Bayesian Environment Representation, Prediction, and
+    // Criticality Assessment for Driver Assistance Systems, 2016
     double px_p = p_x;
     double py_p = p_y;
     double v_p = 0.0;
@@ -845,7 +844,7 @@ void UKF::updateKalmanGain(const int motion_ind)
     cross_covariance.fill(0.0);
     for (int i = 0; i < 2 * num_state_ + 1; i++) {
         Eigen::VectorXd z_sig_point(num_meas_state);
-        if(num_meas_state == RSU_lane_state_)
+        if (num_meas_state == RSU_lane_state_)
             z_sig_point << x_sig_pred(0, i), x_sig_pred(1, i), x_sig_pred(3, i);
         else
             z_sig_point << x_sig_pred(0, i), x_sig_pred(1, i);

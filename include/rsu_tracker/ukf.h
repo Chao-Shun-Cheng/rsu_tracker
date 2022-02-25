@@ -13,7 +13,6 @@
 #define BETA 2
 #define K 0
 
-// cout color
 #define RESET   "\033[0m"
 #define BLACK   "\033[30m"      /* Black */
 #define RED     "\033[31m"      /* Red */
