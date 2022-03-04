@@ -63,6 +63,7 @@ private:
     ros::Publisher pub_object_array_;
 
     std_msgs::Header input_header_;
+    int Frame = 2;
 
     void callback(const autoware_msgs::DetectedObjectArray &input);
 

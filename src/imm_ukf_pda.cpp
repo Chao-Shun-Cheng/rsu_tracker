@@ -17,7 +17,7 @@ ImmUkfPda::ImmUkfPda()
     private_nh_.param<float>("merge_distance_threshold", merge_distance_threshold_, 0.5);
     private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 1);
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
-    private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
+    private_nh_.param<bool>("use_vector_map", use_vector_map_, false);
     private_nh_.param<bool>("debug", debug_, true);
     private_nh_.param<bool>("output_result", output_result_, true);
     if (output_result_) {
@@ -31,16 +31,16 @@ void ImmUkfPda::get_logfilename()
 {
     time_t now = time(0);
     tm *ltm = localtime(&now);
-    logfile_name_ += (1 + ltm->tm_mon) / 10 ? std::to_string(1 + ltm->tm_mon) : ("0" + std::to_string(1 + ltm->tm_mon));      // month
+    logfile_name_ += (1 + ltm->tm_mon) / 10 ? std::to_string(1 + ltm->tm_mon) : ("0" + std::to_string(1 + ltm->tm_mon));     // month
     logfile_name_ += (1 + ltm->tm_mday) / 10 ? std::to_string(1 + ltm->tm_mday) : ("0" + std::to_string(1 + ltm->tm_mday));  // day
     logfile_name_ += (1 + ltm->tm_hour) / 10 ? std::to_string(1 + ltm->tm_hour) : ("0" + std::to_string(1 + ltm->tm_hour));  // hour
     logfile_name_ += (1 + ltm->tm_min) / 10 ? std::to_string(1 + ltm->tm_min) : ("0" + std::to_string(1 + ltm->tm_min));     // minute
     logfile_name_ += ".csv";
     logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
     if (!logfile.is_open()) {
-        std::cerr << RED << "failed to open " << save_path_ + logfile_name_ << RESET << '\n';
-    } else { 
-        logfile << "Time,Ground_x,Ground_y,Ground_velocity,Ground_yaw,Ground_yaw_rate,"  
+        std::cerr << RED << "failed to open " << save_path_ << logfile_name_ << RESET << '\n';
+    } else {
+        logfile << "Time,Ground_x,Ground_y,Ground_velocity,Ground_yaw,Ground_yaw_rate,"
                 << "TrackingState,Tracking_x,Tracking_y,Tracking_velocity,Tracking_yaw,Tracking_yaw_rate,"
                 << "covariance_x,covariance_y,covariance_velocity,covariance_yaw,covariance_yaw_rate,"
                 << "prob_CV,prob_CTRV,prob_RM\n";
@@ -65,7 +65,7 @@ void ImmUkfPda::callbackGetVMLanes(const vector_map_msgs::LaneArray &msg)
 {
     if (m_MapRaw.pLanes == nullptr) {
         m_MapRaw.pLanes = new UtilityHNS::AisanLanesFileReader(msg);
-        std::cout << "Received Lanes : " << m_MapRaw.pLanes->m_data_list.size() << std::endl;
+        std::cout << GREEN << "Received Lanes : " << RESET << m_MapRaw.pLanes->m_data_list.size() << std::endl;
     }
 }
 
@@ -73,7 +73,7 @@ void ImmUkfPda::callbackGetVMPoints(const vector_map_msgs::PointArray &msg)
 {
     if (m_MapRaw.pPoints == nullptr) {
         m_MapRaw.pPoints = new UtilityHNS::AisanPointsFileReader(msg);
-        std::cout << "Received Points : " << m_MapRaw.pPoints->m_data_list.size() << std::endl;
+        std::cout << GREEN << "Received Points : " << RESET << m_MapRaw.pPoints->m_data_list.size() << std::endl;
     }
 }
 
@@ -81,14 +81,14 @@ void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray &msg)
 {
     if (m_MapRaw.pNodes == nullptr) {
         m_MapRaw.pNodes = new UtilityHNS::AisanNodesFileReader(msg);
-        std::cout << "Received Nodes : " << m_MapRaw.pNodes->m_data_list.size() << std::endl;
+        std::cout << GREEN << "Received Nodes : " << RESET << m_MapRaw.pNodes->m_data_list.size() << std::endl;
     }
 }
 
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
     if (use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints == nullptr || m_MapRaw.pNodes == nullptr)) {
-        std::cout << "Loading for vector map ...." << std::endl;
+        std::cout << YELLOW << "Loading for vector map ...." << RESET << std::endl;
         return;
     }
 
@@ -108,6 +108,7 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 
 void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
+    std::cout << GREEN << "----- Frame " << Frame++ << " -----" << RESET << std::endl;
     double timestamp = input.header.stamp.toSec();
     std::vector<bool> matching_vec(input.objects.size(), false);
 
@@ -130,25 +131,25 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
         // prevent ukf not to explode
         if (targets_[i].p_merge_.determinant() > prevent_explosion_threshold_ || targets_[i].p_merge_(4, 4) > prevent_explosion_threshold_) {
             targets_[i].tracking_num_ = TrackingState::Die;
+            std::cout << YELLOW << "estimate covariance is explosion ..." << RESET << std::endl;
             continue;
         }
         
         targets_[i].predictionIMMUKF(dt);
-        
+
         std::vector<autoware_msgs::DetectedObject> object_vec;
         bool success = probabilisticDataAssociation(input, dt, matching_vec, object_vec, targets_[i]);
         if (!success)
             continue;
         
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
-        
     }
     // end UKF process
-
-    makeNewTargets(timestamp, input, matching_vec);  // making new ukf target for no data association objects
-    staticClassification();                          // static dynamic classification
-    makeOutput(input, detected_objects_output);      // making output for visualization
-    removeUnnecessaryTarget();                       // remove unnecessary ukf object
+    
+    makeNewTargets(timestamp, input, matching_vec);                     // making new ukf target for no data association objects
+    staticClassification();                                             // static dynamic classification
+    makeOutput(input, detected_objects_output);                         // making output for visualization
+    removeUnnecessaryTarget();                                          // remove unnecessary ukf object
 }
 
 void ImmUkfPda::removeUnnecessaryTarget()
@@ -222,6 +223,10 @@ bool ImmUkfPda::probabilisticDataAssociation(const autoware_msgs::DetectedObject
     if (std::isnan(det_s) || det_s > prevent_explosion_threshold_) {
         target.tracking_num_ = TrackingState::Die;
         success = false;
+        if (std::isnan(det_s))
+            std::cout << YELLOW << "measurement covariance is nan" << RESET << std::endl;
+        else
+            std::cout << YELLOW << "measurement covariance is explosion" << RESET << std::endl;
         return success;
     }
 
@@ -360,24 +365,31 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
     tmp_objects.header = input.header;
     std::vector<size_t> used_targets_indices;
     for (size_t i = 0; i < targets_.size(); i++) {
-        double tx = targets_[i].x_merge_(0);
-        double ty = targets_[i].x_merge_(1);
-        double tv = targets_[i].x_merge_(2);
+        autoware_msgs::DetectedObject dd;
+        dd = targets_[i].object_;
+        dd.id = targets_[i].ukf_id_;
+        dd.pose.position.x = targets_[i].x_merge_(0);
+        dd.pose.position.y = targets_[i].x_merge_(1);
+        dd.velocity.linear.x = targets_[i].x_merge_(2);
+        dd.acceleration.linear.y = targets_[i].x_merge_(4);
+        dd.velocity_reliable = targets_[i].is_stable_;
+        dd.pose_reliable = targets_[i].is_stable_;
+
         double tyaw = targets_[i].x_merge_(3);
-        double tyaw_rate = targets_[i].x_merge_(4);
         while (tyaw > M_PI)
             tyaw -= 2. * M_PI;
         while (tyaw < -M_PI)
             tyaw += 2. * M_PI;
         tf::Quaternion q = tf::createQuaternionFromYaw(tyaw);
+        if (!std::isnan(q[0]))
+            dd.pose.orientation.x = q[0];
+        if (!std::isnan(q[1]))
+            dd.pose.orientation.y = q[1];
+        if (!std::isnan(q[2]))
+            dd.pose.orientation.z = q[2];
+        if (!std::isnan(q[3]))
+            dd.pose.orientation.w = q[3];
 
-        autoware_msgs::DetectedObject dd;
-        dd = targets_[i].object_;
-        dd.id = targets_[i].ukf_id_;
-        dd.velocity.linear.x = tv;
-        dd.acceleration.linear.y = tyaw_rate;
-        dd.velocity_reliable = targets_[i].is_stable_;
-        dd.pose_reliable = targets_[i].is_stable_;
         for (int j = 0; j < 5; j++) {
             for (int k = 0; k < 5; k++)
                 dd.covariance[j * 5 + k] = targets_[i].p_merge_(j, k);
@@ -388,18 +400,6 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
             dd.dimensions.y = targets_[i].object_.dimensions.x;
         }
 
-        if (!targets_[i].is_static_ && targets_[i].is_stable_) {
-            dd.pose.position.x = tx;
-            dd.pose.position.y = ty;
-            if (!std::isnan(q[0]))
-                dd.pose.orientation.x = q[0];
-            if (!std::isnan(q[1]))
-                dd.pose.orientation.y = q[1];
-            if (!std::isnan(q[2]))
-                dd.pose.orientation.z = q[2];
-            if (!std::isnan(q[3]))
-                dd.pose.orientation.w = q[3];
-        }
         updateBehaviorState(targets_[i], dd);
 
         if (targets_[i].is_stable_ || (targets_[i].tracking_num_ >= TrackingState::Init && targets_[i].tracking_num_ < TrackingState::Stable)) {
@@ -411,27 +411,27 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
     saveResult(input, detected_objects_output);
 }
 
-void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray& input, const autoware_msgs::DetectedObjectArray& output)
+void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &input, const autoware_msgs::DetectedObjectArray &output)
 {
+    if ((input.objects.size() != 1) || (output.objects.size() != 1)) {
+        std::cout << YELLOW << "The size of input and output is not same ..." << RESET << std::endl;
+    }
     logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
     if (!logfile.is_open()) {
-        std::cerr << RED << "failed to open " << save_path_ + logfile_name_ << RESET << '\n';
+        std::cerr << RED << "failed to open " << save_path_ << logfile_name_ << RESET << '\n';
     } else {
         logfile << std::to_string(input.header.stamp.toSec()) << ",";
-        logfile << std::to_string(input.objects[0].pose.position.x) << "," << std::to_string(input.objects[0].pose.position.y) << ","  
-                << std::to_string(input.objects[0].velocity.linear.x) << "," 
-                << std::to_string(tf::getYaw(input.objects[0].pose.orientation)) << "," 
+        logfile << std::to_string(input.objects[0].pose.position.x) << "," << std::to_string(input.objects[0].pose.position.y) << ","
+                << std::to_string(input.objects[0].velocity.linear.x) << "," << std::to_string(tf::getYaw(input.objects[0].pose.orientation)) << ","
                 << std::to_string(input.objects[0].acceleration.linear.y) << ",";
-        logfile << output.objects[0].user_defined_info[3] << ","
-                << std::to_string(output.objects[0].pose.position.x) << "," << std::to_string(output.objects[0].pose.position.y) << ","  
-                << std::to_string(output.objects[0].velocity.linear.x) << "," 
-                << std::to_string(tf::getYaw(output.objects[0].pose.orientation)) << "," 
-                << std::to_string(output.objects[0].acceleration.linear.y) << ",";
-        logfile << std::to_string(output.objects[0].covariance[0]) << "," << std::to_string(output.objects[0].covariance[6]) << "," 
-                << std::to_string(output.objects[0].covariance[12]) << "," << std::to_string(output.objects[0].covariance[18]) << "," 
+        logfile << output.objects[0].user_defined_info[3] << "," << std::to_string(output.objects[0].pose.position.x) << ","
+                << std::to_string(output.objects[0].pose.position.y) << "," << std::to_string(output.objects[0].velocity.linear.x) << ","
+                << std::to_string(tf::getYaw(output.objects[0].pose.orientation)) << "," << std::to_string(output.objects[0].acceleration.linear.y)
+                << ",";
+        logfile << std::to_string(output.objects[0].covariance[0]) << "," << std::to_string(output.objects[0].covariance[6]) << ","
+                << std::to_string(output.objects[0].covariance[12]) << "," << std::to_string(output.objects[0].covariance[18]) << ","
                 << std::to_string(output.objects[0].covariance[24]) << ",";
-        logfile << output.objects[0].user_defined_info[0] << ","
-                << output.objects[0].user_defined_info[1] << ","
+        logfile << output.objects[0].user_defined_info[0] << "," << output.objects[0].user_defined_info[1] << ","
                 << output.objects[0].user_defined_info[2] << std::endl;
         logfile.close();
     }
@@ -480,8 +480,9 @@ autoware_msgs::DetectedObjectArray ImmUkfPda::removeRedundantObjects(const autow
         // delete nearby targets except for the oldest target
         for (size_t j = 0; j < matching_objects[i].size(); j++) {
             size_t current_index = matching_objects[i][j];
-            if (current_index != oldest_object_index)
+            if (current_index != oldest_object_index) {
                 targets_[in_tracker_indices[current_index]].tracking_num_ = TrackingState::Die;
+            }
         }
         autoware_msgs::DetectedObject best_object;
         best_object = in_detected_objects.objects[oldest_object_index];
@@ -540,7 +541,7 @@ bool ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, d
     for (int i = 0; i < m_MapRaw.pLanes->m_data_list.size(); i++) {
         UtilityHNS::AisanNodesFileReader::AisanNode *N = m_MapRaw.pNodes->GetDataRowById(m_MapRaw.pLanes->m_data_list[i].BNID);
         UtilityHNS::AisanPointsFileReader::AisanPoints *P = m_MapRaw.pPoints->GetDataRowById(N->PID);
-        double distance = pow(pow(abs(pos_x - P->Ly), 2) + pow(abs(pos_y - P->Bx), 2), 0.5);
+        double distance = pow(pow((pos_x - P->Ly), 2) + pow((pos_y - P->Bx), 2), 0.5);
         if (distance < lane_distance_threshold_ && distance < min_distance) {
             min_distance = distance;
             min_index = i;

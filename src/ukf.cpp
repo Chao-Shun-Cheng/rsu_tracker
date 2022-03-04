@@ -122,6 +122,8 @@ UKF::UKF(bool use_vector_map, bool debug)
     // tracking parameter
     lifetime_ = 0;
     is_static_ = false;
+    is_direction_ctrv_available_ = false;
+    is_direction_cv_available_ = false;
 
     // bounding box params
     is_stable_ = false;
@@ -278,7 +280,7 @@ void UKF::interaction()
     x_ctrv_ = mode_match_prob_cv2ctrv_ * x_pre_cv + mode_match_prob_ctrv2ctrv_ * x_pre_ctrv + mode_match_prob_rm2ctrv_ * x_pre_rm;
     x_rm_ = mode_match_prob_cv2rm_ * x_pre_cv + mode_match_prob_ctrv2rm_ * x_pre_ctrv + mode_match_prob_rm2rm_ * x_pre_rm;
 
-    // not interacting yaw(-pi ~ pi)
+    // not interacting, is it necessary ?
     x_cv_(3) = x_pre_cv(3);
     x_ctrv_(3) = x_pre_ctrv(3);
     x_rm_(3) = x_pre_rm(3);
@@ -524,9 +526,6 @@ void UKF::updateIMMUKF(const float detection_probability,
                        const float gating_threshold,
                        const std::vector<autoware_msgs::DetectedObject> &object_vec)
 {
-    /*****************************************************************************
-     *  IMM Update
-     ****************************************************************************/
     // update kalman gain
     updateKalmanGain(MotionModel::CV);
     updateKalmanGain(MotionModel::CTRV);
@@ -534,12 +533,9 @@ void UKF::updateIMMUKF(const float detection_probability,
 
     // update state varibale x and state covariance p
     std::vector<double> lambda_vec;
-    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec,
-                     lambda_vec);  // TODO : understand this function
-                     
-    /*****************************************************************************
-     *  IMM Merge Step
-     ****************************************************************************/
+    updateEachMotion(detection_probability, gate_probability, gating_threshold, object_vec, lambda_vec);
+
+    // IMM Merge Step
     updateModeProb(lambda_vec);
     mergeEstimationAndCovariance();
 }
@@ -589,17 +585,11 @@ void UKF::cv(const double p_x,
 {
     // Reference: Bayesian Environment Representation, Prediction, and
     // Criticality Assessment for Driver Assistance Systems, 2016
-    double px_p = p_x + v * cos(yaw) * delta_t;
-    double py_p = p_y + v * sin(yaw) * delta_t;
-    double v_p = v;
-    double yaw_p = yaw;
-    double yawd_p = 0;
-
-    state[0] = px_p;
-    state[1] = py_p;
-    state[2] = v_p;
-    state[3] = yaw_p;
-    state[4] = yawd_p;
+    state[0] = p_x + v * cos(yaw) * delta_t;
+    state[1] = p_y + v * sin(yaw) * delta_t;
+    state[2] = v;
+    state[3] = yaw;
+    state[4] = 0;
 }
 
 void UKF::randomMotion(const double p_x,
@@ -612,17 +602,11 @@ void UKF::randomMotion(const double p_x,
 {
     // Reference: Bayesian Environment Representation, Prediction, and
     // Criticality Assessment for Driver Assistance Systems, 2016
-    double px_p = p_x;
-    double py_p = p_y;
-    double v_p = 0.0;
-    double yaw_p = yaw;
-    double yawd_p = 0;
-
-    state[0] = px_p;
-    state[1] = py_p;
-    state[2] = v_p;
-    state[3] = yaw_p;
-    state[4] = yawd_p;
+    state[0] = p_x;
+    state[1] = p_y;
+    state[2] = 0.0;
+    state[3] = yaw;
+    state[4] = 0;
 }
 
 void UKF::initCovarQs(const double dt, const double yaw)
@@ -798,6 +782,7 @@ void UKF::updateKalmanGain(const int motion_ind)
     Eigen::VectorXd z_pred;
     Eigen::MatrixXd s_pred;
     int num_meas_state = 0;
+
     if (motion_ind == MotionModel::CV) {
         x = x_cv_.col(0);
         x_sig_pred = x_sig_pred_cv_;
@@ -839,7 +824,7 @@ void UKF::updateKalmanGain(const int motion_ind)
         s_pred = Eigen::MatrixXd(num_meas_state, num_meas_state);
         s_pred = s_rm_;
     }
-
+    
     Eigen::MatrixXd cross_covariance = Eigen::MatrixXd(num_state_, num_meas_state);
     cross_covariance.fill(0.0);
     for (int i = 0; i < 2 * num_state_ + 1; i++) {
