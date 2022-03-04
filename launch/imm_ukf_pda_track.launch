@@ -1,11 +1,11 @@
 <!-- -->
 <launch>
-  <arg name="namespace" default="/simulator/tracker/"/>
+  <arg name="namespace" default="/rsu/tracker/"/>
   <arg name="pub_topic" default="/rsu/tracker/objects" />
   <arg name="sub_topic" default="/simulator/ground_truth/objects" />
 
   <arg name="tracking_frame" default="/world" />
-  <arg name="gating_threshold" default="9.22" />
+  <arg name="gating_threshold" default="9.22" /> <!-- origin value is 9.22 -->
   <arg name="gate_probability" default="0.99" />
   <arg name="detection_probability" default="0.9" />
   <arg name="life_time_threshold" default="8" />
@@ -17,11 +17,11 @@
   <arg name="yaw_threshold" default="2.71"/>
   <arg name="use_vector_map" default="true"/>
   <arg name="debug" default="true"/>
-  <arg name="output_result" default="true"/>
-  <arg name="logfile_name" default="shalun_2" />
-  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/" />
+  <arg name="output_result" default="false"/>
+  <arg name="logfile_name" default="shalun_3_useMap_" />
+  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/shalun_3/" />
   
-  <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">
+  <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">            
     <param name="gating_threshold" value="$(arg gating_threshold)" />
     <param name="gate_probability" value="$(arg gate_probability)" />
     <param name="detection_probability" value="$(arg detection_probability)" />
@@ -37,7 +37,7 @@
     <param name="yaw_threshold" value="$(arg yaw_threshold)" />
     <param name="use_vector_map" value="$(arg use_vector_map)" />
     <param name="debug" value="$(arg debug)" />
-    <param name="output_result" value="$(arg debug)" />
+    <param name="output_result" value="$(arg output_result)" />
     <param name="sub_topic" value="$(arg sub_topic)" />
     <param name="pub_topic" value="$(arg pub_topic)" />
   </node>

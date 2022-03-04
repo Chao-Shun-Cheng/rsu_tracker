@@ -1,6 +1,6 @@
 #include <rsu_tracker/imm_ukf_pda.h>
 
-ImmUkfPda::ImmUkfPda()
+ImmUkfPda::ImmUkfPda() : private_nh_("~")
 {
     target_id_ = 0;
     init_ = false;
@@ -17,7 +17,7 @@ ImmUkfPda::ImmUkfPda()
     private_nh_.param<float>("merge_distance_threshold", merge_distance_threshold_, 0.5);
     private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 1);
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
-    private_nh_.param<bool>("use_vector_map", use_vector_map_, false);
+    private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
     private_nh_.param<bool>("debug", debug_, true);
     private_nh_.param<bool>("output_result", output_result_, true);
     if (output_result_) {
@@ -45,7 +45,7 @@ void ImmUkfPda::get_logfilename()
                 << "covariance_x,covariance_y,covariance_velocity,covariance_yaw,covariance_yaw_rate,"
                 << "prob_CV,prob_CTRV,prob_RM\n";
         logfile.close();
-        std::cout << "save path : " << save_path_ + logfile_name_ << std::endl;
+        std::cout << YELLOW << "save path : " << save_path_ + logfile_name_ << RESET << std::endl;
     }
     return;
 }
@@ -145,7 +145,7 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
     }
     // end UKF process
-    
+
     makeNewTargets(timestamp, input, matching_vec);                     // making new ukf target for no data association objects
     staticClassification();                                             // static dynamic classification
     makeOutput(input, detected_objects_output);                         // making output for visualization
@@ -226,7 +226,7 @@ bool ImmUkfPda::probabilisticDataAssociation(const autoware_msgs::DetectedObject
         if (std::isnan(det_s))
             std::cout << YELLOW << "measurement covariance is nan" << RESET << std::endl;
         else
-            std::cout << YELLOW << "measurement covariance is explosion" << RESET << std::endl;
+            std::cout << YELLOW << "measurement covariance is explosion : " << det_s << RESET << std::endl;
         return success;
     }
 
@@ -408,7 +408,8 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
         }
     }
     detected_objects_output = removeRedundantObjects(tmp_objects, used_targets_indices);
-    saveResult(input, detected_objects_output);
+    if (output_result_) 
+        saveResult(input, detected_objects_output);
 }
 
 void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &input, const autoware_msgs::DetectedObjectArray &output)
