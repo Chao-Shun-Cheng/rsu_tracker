@@ -5,6 +5,7 @@
 #include <iostream>
 #include <vector>
 #include <fstream>
+#include <time.h>
 #include "autoware_msgs/DetectedObject.h"
 #include "autoware_msgs/DetectedObjectArray.h"
 #include "op_utility/DataRW.h"
@@ -17,6 +18,7 @@ class ImmUkfPda
 {
 private:
     bool debug_;
+    bool lgsvl_;
     bool use_vector_map_;
     bool output_result_;
     UtilityHNS::MapRaw m_MapRaw;
@@ -75,6 +77,8 @@ private:
 
     void transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
 
+    void transformPoseToGlobal_meas(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
+
     geometry_msgs::Pose getTransformedPose(const geometry_msgs::Pose &in_pose, const tf::StampedTransform &tf_stamp);
 
     bool updateNecessaryTransform();
@@ -121,7 +125,10 @@ private:
 
     void get_logfilename();
 
-    void saveResult(const autoware_msgs::DetectedObjectArray& input, const autoware_msgs::DetectedObjectArray& output);
+    void saveResult(const autoware_msgs::DetectedObjectArray &ground_truth,
+                           const autoware_msgs::DetectedObjectArray &measurement,
+                           const autoware_msgs::DetectedObjectArray &output,
+                           const double &cost_time);
 
 public:
     ImmUkfPda();

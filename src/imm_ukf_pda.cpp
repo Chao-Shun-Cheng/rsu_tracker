@@ -19,6 +19,7 @@ ImmUkfPda::ImmUkfPda() : private_nh_("~")
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
     private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
     private_nh_.param<bool>("debug", debug_, true);
+    private_nh_.param<bool>("lgsvl", lgsvl_, true);
     private_nh_.param<bool>("output_result", output_result_, true);
     if (output_result_) {
         private_nh_.param<std::string>("logfile_name", logfile_name_, "shalun_2_");
@@ -40,7 +41,7 @@ void ImmUkfPda::get_logfilename()
     if (!logfile.is_open()) {
         std::cerr << RED << "failed to open " << save_path_ << logfile_name_ << RESET << '\n';
     } else {
-        logfile << "Time,Ground_x,Ground_y,Ground_velocity,Ground_yaw,Ground_yaw_rate,"
+        logfile << "Time,Computed_time,Ground_x,Ground_y,Ground_velocity,Ground_yaw,measurement_x,measurement_y,"
                 << "TrackingState,Tracking_x,Tracking_y,Tracking_velocity,Tracking_yaw,Tracking_yaw_rate,"
                 << "covariance_x,covariance_y,covariance_velocity,covariance_yaw,covariance_yaw_rate,"
                 << "prob_CV,prob_CTRV,prob_RM\n";
@@ -98,12 +99,19 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
         ROS_INFO("Could not find coordiante transformation");
         return;
     }
-
+    ros::Time start = ros::Time::now();
     autoware_msgs::DetectedObjectArray transformed_input;
     autoware_msgs::DetectedObjectArray detected_objects_output;
-    transformPoseToGlobal(input, transformed_input);
+    transformPoseToGlobal_meas(input, transformed_input);
     tracker(transformed_input, detected_objects_output);
     pub_object_array_.publish(detected_objects_output);
+    ros::Time end = ros::Time::now();
+    
+    if (lgsvl_ && output_result_) {
+        autoware_msgs::DetectedObjectArray ground_truth;
+        transformPoseToGlobal(input, ground_truth);
+        saveResult(ground_truth, transformed_input, detected_objects_output, end.toSec() - start.toSec());
+    }
 }
 
 void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
@@ -134,22 +142,22 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
             std::cout << YELLOW << "estimate covariance is explosion ..." << RESET << std::endl;
             continue;
         }
-        
+
         targets_[i].predictionIMMUKF(dt);
 
         std::vector<autoware_msgs::DetectedObject> object_vec;
         bool success = probabilisticDataAssociation(input, dt, matching_vec, object_vec, targets_[i]);
         if (!success)
             continue;
-        
+
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
     }
     // end UKF process
 
-    makeNewTargets(timestamp, input, matching_vec);                     // making new ukf target for no data association objects
-    staticClassification();                                             // static dynamic classification
-    makeOutput(input, detected_objects_output);                         // making output for visualization
-    removeUnnecessaryTarget();                                          // remove unnecessary ukf object
+    makeNewTargets(timestamp, input, matching_vec);  // making new ukf target for no data association objects
+    staticClassification();                          // static dynamic classification
+    makeOutput(input, detected_objects_output);      // making output for visualization
+    removeUnnecessaryTarget();                       // remove unnecessary ukf object
 }
 
 void ImmUkfPda::removeUnnecessaryTarget()
@@ -408,30 +416,36 @@ void ImmUkfPda::makeOutput(const autoware_msgs::DetectedObjectArray &input, auto
         }
     }
     detected_objects_output = removeRedundantObjects(tmp_objects, used_targets_indices);
-    if (output_result_) 
-        saveResult(input, detected_objects_output);
 }
 
-void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &input, const autoware_msgs::DetectedObjectArray &output)
+void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &ground_truth,
+                           const autoware_msgs::DetectedObjectArray &measurement,
+                           const autoware_msgs::DetectedObjectArray &output,
+                           const double &cost_time)
 {
-    if ((input.objects.size() != 1) || (output.objects.size() != 1)) {
+    if ((measurement.objects.size() != 1) || (output.objects.size() != 1)) {
         std::cout << YELLOW << "The size of input and output is not same ..." << RESET << std::endl;
     }
     logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
     if (!logfile.is_open()) {
         std::cerr << RED << "failed to open " << save_path_ << logfile_name_ << RESET << '\n';
     } else {
-        logfile << std::to_string(input.header.stamp.toSec()) << ",";
-        logfile << std::to_string(input.objects[0].pose.position.x) << "," << std::to_string(input.objects[0].pose.position.y) << ","
-                << std::to_string(input.objects[0].velocity.linear.x) << "," << std::to_string(tf::getYaw(input.objects[0].pose.orientation)) << ","
-                << std::to_string(input.objects[0].acceleration.linear.y) << ",";
+        // Time, Computed time
+        logfile << std::to_string(ground_truth.header.stamp.toSec()) << "," << std::to_string(cost_time) << ",";
+        // Ground x, Ground y, Ground velocity, Ground yaw, Measurement x, Measurement y
+        logfile << std::to_string(ground_truth.objects[0].pose.position.x) << "," << std::to_string(ground_truth.objects[0].pose.position.y) << ","
+                << std::to_string(ground_truth.objects[0].velocity.linear.x) << "," << std::to_string(tf::getYaw(ground_truth.objects[0].pose.orientation)) << ","
+                << std::to_string(measurement.objects[0].pose.position.x) << "," << std::to_string(measurement.objects[0].pose.position.y) << ",";
+        // Tracking State, Tracking x, Tracking y, Tracking velocity, Tracking yaw, Tracking yaw rate
         logfile << output.objects[0].user_defined_info[3] << "," << std::to_string(output.objects[0].pose.position.x) << ","
                 << std::to_string(output.objects[0].pose.position.y) << "," << std::to_string(output.objects[0].velocity.linear.x) << ","
                 << std::to_string(tf::getYaw(output.objects[0].pose.orientation)) << "," << std::to_string(output.objects[0].acceleration.linear.y)
                 << ",";
+        // covariance x, covariance y, covariance velocity, covariance yaw, covariance yaw rate
         logfile << std::to_string(output.objects[0].covariance[0]) << "," << std::to_string(output.objects[0].covariance[6]) << ","
                 << std::to_string(output.objects[0].covariance[12]) << "," << std::to_string(output.objects[0].covariance[18]) << ","
                 << std::to_string(output.objects[0].covariance[24]) << ",";
+        // prob CV, prob CTRV, prob RM
         logfile << output.objects[0].user_defined_info[0] << "," << output.objects[0].user_defined_info[1] << ","
                 << output.objects[0].user_defined_info[2] << std::endl;
         logfile.close();
@@ -579,6 +593,25 @@ void ImmUkfPda::transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &
     transformed_input.header.frame_id = tracking_frame_;
     for (auto const &object : input.objects) {
         geometry_msgs::Pose out_pose = getTransformedPose(object.pose, local2global_);
+
+        autoware_msgs::DetectedObject dd;
+        dd = object;
+        dd.header.frame_id = tracking_frame_;
+        dd.pose = out_pose;
+
+        transformed_input.objects.push_back(dd);
+    }
+}
+
+void ImmUkfPda::transformPoseToGlobal_meas(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input)
+{
+    transformed_input.header = input_header_;
+    transformed_input.header.frame_id = tracking_frame_;
+    for (auto const &object : input.objects) {
+        geometry_msgs::Pose out_pose;
+        out_pose.position.x = object.pose.position.x > 0 ? object.pose.position.x - (rand() % 10) * 0.01 : object.pose.position.x + (rand() % 10) * 0.01;
+        out_pose.position.y = object.pose.position.y > 0 ? object.pose.position.y - (rand() % 10) * 0.01 : object.pose.position.y + (rand() % 10) * 0.01;
+        out_pose = getTransformedPose(out_pose, local2global_);
 
         autoware_msgs::DetectedObject dd;
         dd = object;
