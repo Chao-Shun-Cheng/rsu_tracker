@@ -20,7 +20,7 @@
   <arg name="lgsvl" default="true"/>
   <arg name="output_result" default="true"/>
   <arg name="logfile_name" default="test" />
-  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/shalun_2/" />
+  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/goStraight/" />
   
   <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">            
     <param name="gating_threshold" value="$(arg gating_threshold)" />
