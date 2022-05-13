@@ -2,10 +2,12 @@
 <launch>
   <arg name="namespace" default="/rsu/tracker/"/>
   <arg name="pub_topic" default="/rsu/tracker/objects" />
-  <arg name="sub_topic" default="/simulator/ground_truth/objects" />
+  <!-- <arg name="sub_topic" default="/lgsvl/rsu/objects" /> -->
+  <arg name="sub_topic" default="/lileeRSU/s0/objects" />
+  <arg name="groundTruth_topic" default="/lgsvl/ground_truth/objects" />
 
   <arg name="tracking_frame" default="/world" />
-  <arg name="gating_threshold" default="10.22" /> <!-- origin value is 9.22 -->
+  <arg name="gating_threshold" default="9.22" /> <!-- origin value is 9.22 -->
   <arg name="gate_probability" default="0.99" />
   <arg name="detection_probability" default="0.9" />
   <arg name="life_time_threshold" default="8" />
@@ -17,10 +19,9 @@
   <arg name="yaw_threshold" default="2.71"/>
   <arg name="use_vector_map" default="false"/>
   <arg name="debug" default="true"/>
-  <arg name="lgsvl" default="true"/>
-  <arg name="output_result" default="true"/>
-  <arg name="logfile_name" default="test" />
-  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/goStraight/" />
+  <arg name="output_result" default="false"/>
+  <arg name="logfile_name" default="rsu_vel14_std07_cv05_ctrv08.csv" />
+  <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/evaluated_path/" />
   
   <node pkg="rsu_tracker" type="rsu_tracker" name="rsu_tracker" output="screen">            
     <param name="gating_threshold" value="$(arg gating_threshold)" />
@@ -38,10 +39,10 @@
     <param name="yaw_threshold" value="$(arg yaw_threshold)" />
     <param name="use_vector_map" value="$(arg use_vector_map)" />
     <param name="debug" value="$(arg debug)" />
-    <param name="lgsvl" value="$(arg lgsvl)" />
     <param name="output_result" value="$(arg output_result)" />
     <param name="sub_topic" value="$(arg sub_topic)" />
     <param name="pub_topic" value="$(arg pub_topic)" />
+    <param name="groundTruth_topic" value="$(arg groundTruth_topic)" />
   </node>
 
   <node pkg="detected_objects_visualizer" type="visualize_detected_objects" name="rsu_track_visualization"

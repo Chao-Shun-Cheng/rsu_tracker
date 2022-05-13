@@ -7,5 +7,8 @@ int main(int argc, char **argv)
     ImmUkfPda app;
     app.run();
     ros::spin();
+    // ros::AsyncSpinner spinner(4);  // Use 4 threads
+    // spinner.start();
+    // ros::waitForShutdown();
     return 0;
 }

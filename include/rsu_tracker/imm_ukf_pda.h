@@ -17,8 +17,7 @@
 class ImmUkfPda
 {
 private:
-    bool debug_;
-    bool lgsvl_;
+    bool debug_ = true;
     bool use_vector_map_;
     bool output_result_;
     UtilityHNS::MapRaw m_MapRaw;
@@ -51,23 +50,30 @@ private:
     std::string save_path_;
     std::string sub_topic_;
     std::string pub_topic_;
+    std::string groundTruth_topic_;
     std::ofstream logfile;
     
     tf::TransformListener tf_listener_;
     tf::StampedTransform local2global_;
+    tf::StampedTransform local2global_ground_truth_;
 
     ros::NodeHandle node_handle_;
     ros::NodeHandle private_nh_;
     ros::Subscriber sub_detected_array_;
+    ros::Subscriber sub_ground_truth_;
     ros::Subscriber sub_lanes;
     ros::Subscriber sub_points;
     ros::Subscriber sub_nodes;
     ros::Publisher pub_object_array_;
 
     std_msgs::Header input_header_;
-    int Frame = 2;
 
-    void callback(const autoware_msgs::DetectedObjectArray &input);
+    autoware_msgs::DetectedObjectArray ground_truth;
+    autoware_msgs::DetectedObjectArray transformed_input;
+
+    int Frame = 1;
+
+    void callbackGroundTruth(const autoware_msgs::DetectedObjectArray &input);
 
     void callbackGetVMLanes(const vector_map_msgs::LaneArray &msg);
 
@@ -75,13 +81,13 @@ private:
 
     void callbackGetVMNodes(const vector_map_msgs::NodeArray &msg);
 
-    void transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
+    void callback(const autoware_msgs::DetectedObjectArray &input);
 
-    void transformPoseToGlobal_meas(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
+    void transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input);
 
     geometry_msgs::Pose getTransformedPose(const geometry_msgs::Pose &in_pose, const tf::StampedTransform &tf_stamp);
 
-    bool updateNecessaryTransform();
+    bool updateNecessaryTransform(tf::StampedTransform &local2global_, const autoware_msgs::DetectedObjectArray &input);
 
     void measurementValidation(const autoware_msgs::DetectedObjectArray &input,
                                UKF &target,

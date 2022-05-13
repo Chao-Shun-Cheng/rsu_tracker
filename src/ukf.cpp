@@ -33,9 +33,9 @@ UKF::UKF(bool use_vector_map, bool debug)
     std_rm_yawdd_ = 3;
 
     // Laser measurement noise standard deviation position1 in m
-    std_laspx_ = 0.8;           // TODO : measurement needs to change to latency + RSU
+    std_laspx_ = 1;           // TODO : measurement needs to change to latency + RSU
                                  // error map by Kenny
-    std_laspy_ = 0.8;           // TODO : measurement needs to change to latency + RSU
+    std_laspy_ = 1;           // TODO : measurement needs to change to latency + RSU
                                  // error map by Kenny
     std_lane_direction_ = 0.1;  // TODO : measurement needs to change to
                                  // latency + RSU error map by Kenny
@@ -53,12 +53,12 @@ UKF::UKF(bool use_vector_map, bool debug)
     weights_s_ = Eigen::VectorXd(2 * num_state_ + 1);
 
     // transition probability
-    p1_.push_back(0.7);
-    p1_.push_back(0.25);
+    p1_.push_back(0.9);
+    p1_.push_back(0.05);
     p1_.push_back(0.05);
 
-    p2_.push_back(0.15);
-    p2_.push_back(0.8);
+    p2_.push_back(0.05);
+    p2_.push_back(0.9);
     p2_.push_back(0.05);
 
     p3_.push_back(0.05);

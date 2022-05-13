@@ -5,7 +5,7 @@ ImmUkfPda::ImmUkfPda() : private_nh_("~")
     target_id_ = 0;
     init_ = false;
     private_nh_.param<std::string>("tracking_frame", tracking_frame_, "world");
-    private_nh_.param<std::string>("sub_topic", sub_topic_, "/simulator/ground_truth/objects");
+    private_nh_.param<std::string>("sub_topic", sub_topic_, "/detection/lidar_detector/objects_filtered");
     private_nh_.param<std::string>("pub_topic", pub_topic_, "/simulator/tracker/objects");
     private_nh_.param<int>("life_time_threshold", life_time_threshold_, 8);
     private_nh_.param<float>("gating_threshold", gating_threshold_, 9.22);
@@ -17,11 +17,11 @@ ImmUkfPda::ImmUkfPda() : private_nh_("~")
     private_nh_.param<float>("merge_distance_threshold", merge_distance_threshold_, 0.5);
     private_nh_.param<float>("lane_distance_threshold", lane_distance_threshold_, 1);
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
-    private_nh_.param<bool>("use_vector_map", use_vector_map_, true);
+    private_nh_.param<bool>("use_vector_map", use_vector_map_, false);
     private_nh_.param<bool>("debug", debug_, true);
-    private_nh_.param<bool>("lgsvl", lgsvl_, true);
-    private_nh_.param<bool>("output_result", output_result_, true);
+    private_nh_.param<bool>("output_result", output_result_, false);
     if (output_result_) {
+        private_nh_.param<std::string>("groundTruth_topic", groundTruth_topic_, "/lgsvl/ground_truth/objects");
         private_nh_.param<std::string>("logfile_name", logfile_name_, "shalun_2_");
         private_nh_.param<std::string>("save_path", save_path_, "/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/");
         get_logfilename();
@@ -30,13 +30,6 @@ ImmUkfPda::ImmUkfPda() : private_nh_("~")
 
 void ImmUkfPda::get_logfilename()
 {
-    time_t now = time(0);
-    tm *ltm = localtime(&now);
-    logfile_name_ += (1 + ltm->tm_mon) / 10 ? std::to_string(1 + ltm->tm_mon) : ("0" + std::to_string(1 + ltm->tm_mon));     // month
-    logfile_name_ += (1 + ltm->tm_mday) / 10 ? std::to_string(1 + ltm->tm_mday) : ("0" + std::to_string(1 + ltm->tm_mday));  // day
-    logfile_name_ += (1 + ltm->tm_hour) / 10 ? std::to_string(1 + ltm->tm_hour) : ("0" + std::to_string(1 + ltm->tm_hour));  // hour
-    logfile_name_ += (1 + ltm->tm_min) / 10 ? std::to_string(1 + ltm->tm_min) : ("0" + std::to_string(1 + ltm->tm_min));     // minute
-    logfile_name_ += ".csv";
     logfile.open(save_path_ + logfile_name_, std::ofstream::out | std::ofstream::app);
     if (!logfile.is_open()) {
         std::cerr << RED << "failed to open " << save_path_ << logfile_name_ << RESET << '\n';
@@ -55,11 +48,23 @@ void ImmUkfPda::run()
 {
     pub_object_array_ = node_handle_.advertise<autoware_msgs::DetectedObjectArray>(pub_topic_, 1);
     sub_detected_array_ = node_handle_.subscribe(sub_topic_, 1, &ImmUkfPda::callback, this);
+    if (output_result_)
+        sub_ground_truth_ = node_handle_.subscribe(groundTruth_topic_, 1, &ImmUkfPda::callbackGroundTruth, this);
     if (use_vector_map_) {
         sub_lanes = node_handle_.subscribe("/vector_map_info/lane", 1, &ImmUkfPda::callbackGetVMLanes, this);
         sub_points = node_handle_.subscribe("/vector_map_info/point", 1, &ImmUkfPda::callbackGetVMPoints, this);
         sub_nodes = node_handle_.subscribe("/vector_map_info/node", 1, &ImmUkfPda::callbackGetVMNodes, this);
     }
+}
+
+void ImmUkfPda::callbackGroundTruth(const autoware_msgs::DetectedObjectArray &input)
+{
+    bool success = updateNecessaryTransform(local2global_ground_truth_, input);
+    if (!success) {
+        ROS_INFO("Could not find ground truth coordiante transformation");
+        return;
+    }
+    transformPoseToGlobal(input, ground_truth);
 }
 
 void ImmUkfPda::callbackGetVMLanes(const vector_map_msgs::LaneArray &msg)
@@ -88,40 +93,60 @@ void ImmUkfPda::callbackGetVMNodes(const vector_map_msgs::NodeArray &msg)
 
 void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
 {
+    if (input.objects.size() == 0) {
+        std::cout << RED << "Empty INPUT !!!!" << RESET << std::endl;
+        return;
+    }
+    if (debug_)
+        std::cout << "----- Frame : " << Frame++ << " -----" << std::endl;
+
     if (use_vector_map_ && (m_MapRaw.pLanes == nullptr || m_MapRaw.pPoints == nullptr || m_MapRaw.pNodes == nullptr)) {
         std::cout << YELLOW << "Loading for vector map ...." << RESET << std::endl;
         return;
     }
 
     input_header_ = input.header;
-    bool success = updateNecessaryTransform();
+    bool success = updateNecessaryTransform(local2global_, input);
     if (!success) {
         ROS_INFO("Could not find coordiante transformation");
         return;
     }
     ros::Time start = ros::Time::now();
-    autoware_msgs::DetectedObjectArray transformed_input;
+    
     autoware_msgs::DetectedObjectArray detected_objects_output;
-    transformPoseToGlobal_meas(input, transformed_input);
+    
+    transformPoseToGlobal(input, transformed_input);
     tracker(transformed_input, detected_objects_output);
     pub_object_array_.publish(detected_objects_output);
     ros::Time end = ros::Time::now();
-    
-    if (lgsvl_ && output_result_) {
-        autoware_msgs::DetectedObjectArray ground_truth;
-        transformPoseToGlobal(input, ground_truth);
-        saveResult(ground_truth, transformed_input, detected_objects_output, end.toSec() - start.toSec());
+
+    if (output_result_&& detected_objects_output.objects.size() != 0 && ground_truth.objects.size() != 0) {
+        saveResult(transformed_input, ground_truth, detected_objects_output, end.toSec() - start.toSec());
     }
+
+    if (debug_ && detected_objects_output.objects.size() == 0) {
+        std::cout << RED << "Tracking Size : " << detected_objects_output.objects.size() << RESET << std::endl;
+        return;
+    }
+
+
+    if (detected_objects_output.objects[0].user_defined_info[3] == "4")
+        std::cout << GREEN << "State : " << 4 << RESET << std::endl;
+    else
+        std::cout << RED << "State : " << detected_objects_output.objects[0].user_defined_info[3] << RESET << std::endl;
 }
 
 void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &detected_objects_output)
 {
-    std::cout << GREEN << "----- Frame " << Frame++ << " -----" << RESET << std::endl;
     double timestamp = input.header.stamp.toSec();
     std::vector<bool> matching_vec(input.objects.size(), false);
 
     if (!init_) {
+        if (debug_)
+            std::cout << YELLOW << "Start initTracker" << RESET << std::endl;
         initTracker(input, timestamp);
+        if (debug_)
+            std::cout << YELLOW << "Start makeOutput" << RESET << std::endl;
         makeOutput(input, detected_objects_output);
         return;
     }
@@ -131,6 +156,9 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
 
     // start UKF process
     for (size_t i = 0; i < targets_.size(); i++) {
+        if (debug_)
+            std::cout << YELLOW << "Start UKF Process" << RESET << std::endl;
+
         targets_[i].is_stable_ = false;
         targets_[i].is_static_ = false;
 
@@ -143,17 +171,24 @@ void ImmUkfPda::tracker(const autoware_msgs::DetectedObjectArray &input, autowar
             continue;
         }
 
+        if (debug_)
+            std::cout << YELLOW << "Start predictionIMMUKF" << RESET << std::endl;
         targets_[i].predictionIMMUKF(dt);
 
+        if (debug_)
+            std::cout << YELLOW << "Start probabilisticDataAssociation" << RESET << std::endl;
         std::vector<autoware_msgs::DetectedObject> object_vec;
         bool success = probabilisticDataAssociation(input, dt, matching_vec, object_vec, targets_[i]);
         if (!success)
             continue;
 
+        if (debug_)
+            std::cout << YELLOW << "Start updateIMMUKF" << RESET << std::endl;
         targets_[i].updateIMMUKF(detection_probability_, gate_probability_, gating_threshold_, object_vec);
     }
     // end UKF process
-
+    if (debug_)
+        std::cout << YELLOW << "Start makeOutput" << RESET << std::endl;
     makeNewTargets(timestamp, input, matching_vec);  // making new ukf target for no data association objects
     staticClassification();                          // static dynamic classification
     makeOutput(input, detected_objects_output);      // making output for visualization
@@ -434,8 +469,16 @@ void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &ground_trut
         logfile << std::to_string(ground_truth.header.stamp.toSec()) << "," << std::to_string(cost_time) << ",";
         // Ground x, Ground y, Ground velocity, Ground yaw, Measurement x, Measurement y
         logfile << std::to_string(ground_truth.objects[0].pose.position.x) << "," << std::to_string(ground_truth.objects[0].pose.position.y) << ","
-                << std::to_string(ground_truth.objects[0].velocity.linear.x) << "," << std::to_string(tf::getYaw(ground_truth.objects[0].pose.orientation)) << ","
+                << std::to_string(ground_truth.objects[0].velocity.linear.x) << ","
+                << std::to_string(tf::getYaw(ground_truth.objects[0].pose.orientation)) << ","
                 << std::to_string(measurement.objects[0].pose.position.x) << "," << std::to_string(measurement.objects[0].pose.position.y) << ",";
+
+        if (output.objects.size() == 0) {
+            logfile << std::endl;
+            logfile.close();
+            return;
+        }
+
         // Tracking State, Tracking x, Tracking y, Tracking velocity, Tracking yaw, Tracking yaw rate
         logfile << output.objects[0].user_defined_info[3] << "," << std::to_string(output.objects[0].pose.position.x) << ","
                 << std::to_string(output.objects[0].pose.position.y) << "," << std::to_string(output.objects[0].velocity.linear.x) << ","
@@ -455,8 +498,8 @@ void ImmUkfPda::saveResult(const autoware_msgs::DetectedObjectArray &ground_trut
 autoware_msgs::DetectedObjectArray ImmUkfPda::removeRedundantObjects(const autoware_msgs::DetectedObjectArray &in_detected_objects,
                                                                      const std::vector<size_t> in_tracker_indices)
 {
-    // if (in_detected_objects.objects.size() != in_tracker_indices.size())
-    //     return in_detected_objects;
+    if (in_detected_objects.objects.size() != in_tracker_indices.size())
+        return in_detected_objects;
 
     autoware_msgs::DetectedObjectArray resulting_objects;
     resulting_objects.header = in_detected_objects.header;
@@ -574,12 +617,12 @@ bool ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, d
     return true;
 }
 
-bool ImmUkfPda::updateNecessaryTransform()
+bool ImmUkfPda::updateNecessaryTransform(tf::StampedTransform &local2global_, const autoware_msgs::DetectedObjectArray &input)
 {
     bool success = true;
     try {
-        tf_listener_.waitForTransform(input_header_.frame_id, tracking_frame_, ros::Time(0), ros::Duration(2));
-        tf_listener_.lookupTransform(tracking_frame_, input_header_.frame_id, ros::Time(0), local2global_);
+        tf_listener_.waitForTransform(input.header.frame_id, tracking_frame_, ros::Time(0), ros::Duration(3));
+        tf_listener_.lookupTransform(tracking_frame_, input.header.frame_id, ros::Time(0), local2global_);
     } catch (tf::TransformException ex) {
         ROS_ERROR("%s", ex.what());
         success = false;
@@ -589,29 +632,11 @@ bool ImmUkfPda::updateNecessaryTransform()
 
 void ImmUkfPda::transformPoseToGlobal(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input)
 {
-    transformed_input.header = input_header_;
+    transformed_input.objects.clear();
+    transformed_input.header = input.header;
     transformed_input.header.frame_id = tracking_frame_;
     for (auto const &object : input.objects) {
         geometry_msgs::Pose out_pose = getTransformedPose(object.pose, local2global_);
-
-        autoware_msgs::DetectedObject dd;
-        dd = object;
-        dd.header.frame_id = tracking_frame_;
-        dd.pose = out_pose;
-
-        transformed_input.objects.push_back(dd);
-    }
-}
-
-void ImmUkfPda::transformPoseToGlobal_meas(const autoware_msgs::DetectedObjectArray &input, autoware_msgs::DetectedObjectArray &transformed_input)
-{
-    transformed_input.header = input_header_;
-    transformed_input.header.frame_id = tracking_frame_;
-    for (auto const &object : input.objects) {
-        geometry_msgs::Pose out_pose;
-        out_pose.position.x = object.pose.position.x > 0 ? object.pose.position.x - (rand() % 10) * 0.01 : object.pose.position.x + (rand() % 10) * 0.01;
-        out_pose.position.y = object.pose.position.y > 0 ? object.pose.position.y - (rand() % 10) * 0.01 : object.pose.position.y + (rand() % 10) * 0.01;
-        out_pose = getTransformedPose(out_pose, local2global_);
 
         autoware_msgs::DetectedObject dd;
         dd = object;
