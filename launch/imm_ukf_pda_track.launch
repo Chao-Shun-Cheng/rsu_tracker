@@ -19,6 +19,7 @@
   <arg name="yaw_threshold" default="2.71"/>
   <arg name="use_vector_map" default="false"/>
   <arg name="debug" default="true"/>
+  <arg name="experiment_lilee" default="true"/>
   <arg name="output_result" default="false"/>
   <arg name="logfile_name" default="rsu_vel14_std07_cv05_ctrv08.csv" />
   <arg name="save_path" default="/home/kenny/catkin_ws/src/track_to_track_fusion/rsu_tracker/experiment/lgsvl/evaluated_path/" />
@@ -39,6 +40,7 @@
     <param name="yaw_threshold" value="$(arg yaw_threshold)" />
     <param name="use_vector_map" value="$(arg use_vector_map)" />
     <param name="debug" value="$(arg debug)" />
+    <param name="experiment_lilee" value="$(arg experiment_lilee)" />
     <param name="output_result" value="$(arg output_result)" />
     <param name="sub_topic" value="$(arg sub_topic)" />
     <param name="pub_topic" value="$(arg pub_topic)" />

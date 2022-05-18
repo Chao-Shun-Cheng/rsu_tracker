@@ -19,6 +19,7 @@ ImmUkfPda::ImmUkfPda() : private_nh_("~")
     private_nh_.param<float>("yaw_threshold", yaw_threshold_, 2.7);
     private_nh_.param<bool>("use_vector_map", use_vector_map_, false);
     private_nh_.param<bool>("debug", debug_, true);
+    private_nh_.param<bool>("experiment_lilee", experiment_lilee_, true);
     private_nh_.param<bool>("output_result", output_result_, false);
     if (output_result_) {
         private_nh_.param<std::string>("groundTruth_topic", groundTruth_topic_, "/lgsvl/ground_truth/objects");
@@ -59,7 +60,7 @@ void ImmUkfPda::run()
 
 void ImmUkfPda::callbackGroundTruth(const autoware_msgs::DetectedObjectArray &input)
 {
-    bool success = updateNecessaryTransform(local2global_ground_truth_, input);
+    bool success = updateNecessaryTransform(local2global_ground_truth_, input, tracking_frame_);
     if (!success) {
         ROS_INFO("Could not find ground truth coordiante transformation");
         return;
@@ -106,7 +107,7 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
     }
 
     input_header_ = input.header;
-    bool success = updateNecessaryTransform(local2global_, input);
+    bool success = updateNecessaryTransform(local2global_, input, tracking_frame_);
     if (!success) {
         ROS_INFO("Could not find coordiante transformation");
         return;
@@ -115,7 +116,34 @@ void ImmUkfPda::callback(const autoware_msgs::DetectedObjectArray &input)
     
     autoware_msgs::DetectedObjectArray detected_objects_output;
     
-    transformPoseToGlobal(input, transformed_input);
+    autoware_msgs::DetectedObjectArray filter_input;
+    if (experiment_lilee_) {
+        bool success = updateNecessaryTransform(local2vehicle_, input, "velodyne");
+        if (!success) {
+            ROS_INFO("Could not find velodyne and RSU coordiante transformation");
+            return;
+        }
+
+        filter_input.header = input.header;
+        int min_index = -1;
+        double min_distance = DBL_MAX;
+        for (int i = 0; i < input.objects.size(); i++) {
+            geometry_msgs::Pose out_pose = getTransformedPose(input.objects[i].pose, local2vehicle_);
+            if (out_pose.position.x > 2.5 && abs(out_pose.position.y) < 1) {
+                if (min_distance > abs(out_pose.position.y)) {
+                    min_index = i;
+                    min_distance = abs(out_pose.position.y);
+                }
+            }
+        }
+        if (min_index != -1) {
+            filter_input.objects.push_back(input.objects[min_index]);
+            transformPoseToGlobal(filter_input, transformed_input);
+        } else
+            return;
+    } else
+        transformPoseToGlobal(input, transformed_input);
+
     tracker(transformed_input, detected_objects_output);
     pub_object_array_.publish(detected_objects_output);
     ros::Time end = ros::Time::now();
@@ -570,6 +598,7 @@ void ImmUkfPda::updateBehaviorState(const UKF &target, autoware_msgs::DetectedOb
     else
         object.behavior_state = MotionModel::RM;
 
+    object.user_defined_info.clear();
     object.user_defined_info.push_back(std::to_string(target.mode_prob_cv_));
     object.user_defined_info.push_back(std::to_string(target.mode_prob_ctrv_));
     object.user_defined_info.push_back(std::to_string(target.mode_prob_rm_));
@@ -617,12 +646,12 @@ bool ImmUkfPda::findYawFromVectorMap(const double &pos_x, const double &pos_y, d
     return true;
 }
 
-bool ImmUkfPda::updateNecessaryTransform(tf::StampedTransform &local2global_, const autoware_msgs::DetectedObjectArray &input)
+bool ImmUkfPda::updateNecessaryTransform(tf::StampedTransform &local2global_, const autoware_msgs::DetectedObjectArray &input, const std::string frame)
 {
     bool success = true;
     try {
-        tf_listener_.waitForTransform(input.header.frame_id, tracking_frame_, ros::Time(0), ros::Duration(3));
-        tf_listener_.lookupTransform(tracking_frame_, input.header.frame_id, ros::Time(0), local2global_);
+        tf_listener_.waitForTransform(input.header.frame_id, frame, ros::Time(0), ros::Duration(3));
+        tf_listener_.lookupTransform(frame, input.header.frame_id, ros::Time(0), local2global_);
     } catch (tf::TransformException ex) {
         ROS_ERROR("%s", ex.what());
         success = false;
